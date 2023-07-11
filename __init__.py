@@ -5,4 +5,4 @@ from .utils import (create_access_token, create_refresh_token, current_user, dec
                     unset_jwt_cookies, unset_refresh_cookies, get_access_cookie_value, get_refresh_cookie_value)
 from .view_decorators import (jwt_required, verify_jwt_in_request)
 
-__version__ = "4.5.2" # modified by bob1b
+__version__ = "b4.5.2"  # modified by bob1b

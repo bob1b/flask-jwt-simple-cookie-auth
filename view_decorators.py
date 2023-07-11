@@ -183,50 +183,6 @@ def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
     return {"loaded_user": user}
 
 
-def _decode_jwt_from_headers() -> Tuple[str, None]:
-    header_name = config.header_name
-    header_type = config.header_type
-
-    # Verify we have the auth header
-    auth_header = request.headers.get(header_name, "").strip().strip(",")
-    if not auth_header:
-        raise NoAuthorizationError(f"Missing {header_name} Header")
-
-    # Make sure the header is in a valid format that we are expecting, ie
-    # <HeaderName>: <HeaderType(optional)> <JWT>.
-    #
-    # Also handle the fact that the header that can be comma delimited, ie
-    # <HeaderName>: <field> <value>, <field> <value>, etc...
-    if header_type:
-        field_values = split(r",\s*", auth_header)
-        jwt_headers = [s for s in field_values if s.split()[0] == header_type]
-        if len(jwt_headers) != 1:
-            msg = (
-                f"Missing '{header_type}' type in '{header_name}' header. "
-                f"Expected '{header_name}: {header_type} <JWT>'"
-            )
-            raise NoAuthorizationError(msg)
-
-        parts = jwt_headers[0].split()
-        if len(parts) != 2:
-            msg = (
-                f"Bad {header_name} header. "
-                f"Expected '{header_name}: {header_type} <JWT>'"
-            )
-            raise InvalidHeaderError(msg)
-
-        encoded_token = parts[1]
-    else:
-        parts = auth_header.split()
-        if len(parts) != 1:
-            msg = f"Bad {header_name} header. Expected '{header_name}: <JWT>'"
-            raise InvalidHeaderError(msg)
-
-        encoded_token = parts[0]
-
-    return encoded_token, None
-
-
 def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     if refresh:
         cookie_key = config.refresh_cookie_name
@@ -256,106 +212,29 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     return encoded_token, csrf_value
 
 
-def _decode_jwt_from_query_string() -> Tuple[str, None]:
-    param_name = config.query_string_name
-    prefix = config.query_string_value_prefix
-
-    value = request.args.get(param_name)
-    if not value:
-        raise NoAuthorizationError(f"Missing '{param_name}' query paramater")
-
-    if not value.startswith(prefix):
-        raise InvalidQueryParamError(
-            f"Invalid value for query parameter '{param_name}'. "
-            f"Expected the value to start with '{prefix}'"
-        )
-
-    encoded_token = value[len(prefix) :]  # noqa: E203
-    return encoded_token, None
-
-
-def _decode_jwt_from_json(refresh: bool) -> Tuple[str, None]:
-    if not request.is_json:
-        raise NoAuthorizationError("Invalid content-type. Must be application/json.")
-
-    if refresh:
-        token_key = config.refresh_json_key
-    else:
-        token_key = config.json_key
-
-    try:
-        encoded_token = request.json and request.json.get(token_key, None)
-        if not encoded_token:
-            raise BadRequest()
-    except BadRequest:
-        raise NoAuthorizationError(
-            'Missing "{}" key in json data.'.format(token_key)
-        ) from None
-
-    return encoded_token, None
-
-
 def _decode_jwt_from_request(
-    locations: LocationType,
     fresh: bool,
     refresh: bool = False,
     verify_type: bool = True,
     skip_revocation_check: bool = False,
 ) -> Tuple[dict, dict, str]:
-    # Figure out what locations to look for the JWT in this request
-    if isinstance(locations, str):
-        locations = [locations]
-
-    if not locations:
-        locations = config.token_location
-
-    # Get the decode functions in the order specified by locations.
-    # Each entry in this list is a tuple (<location>, <encoded-token-function>)
-    get_encoded_token_functions = []
-    for location in locations:
-        if location == "cookies":
-            get_encoded_token_functions.append(
-                (location, lambda: _decode_jwt_from_cookies(refresh))
-            )
-        elif location == "query_string":
-            get_encoded_token_functions.append(
-                (location, _decode_jwt_from_query_string)
-            )
-        elif location == "headers":
-            get_encoded_token_functions.append((location, _decode_jwt_from_headers))
-        elif location == "json":
-            get_encoded_token_functions.append(
-                (location, lambda: _decode_jwt_from_json(refresh))
-            )
-        else:
-            raise RuntimeError(f"'{location}' is not a valid location")
 
     # Try to find the token from one of these locations. It only needs to exist
     # in one place to be valid (not every location).
     errors = []
     decoded_token = None
-    for location, get_encoded_token_function in get_encoded_token_functions:
-        try:
-            encoded_token, csrf_token = get_encoded_token_function()
-            decoded_token = decode_token(encoded_token, csrf_token)
-            jwt_location = location
-            jwt_header = get_unverified_jwt_headers(encoded_token)
-            break
-        except NoAuthorizationError as e:
-            errors.append(str(e))
+    try:
+        encoded_token, csrf_token = _decode_jwt_from_cookies(refresh)
+        decoded_token = decode_token(encoded_token, csrf_token)
+        jwt_header = get_unverified_jwt_headers(encoded_token)
+    except NoAuthorizationError as e:
+        errors.append(str(e))
 
     # Do some work to make a helpful and human-readable error message if no
     # token was found in any of the expected locations.
     if not decoded_token:
-        if len(locations) > 1:
-            err_msg = "Missing JWT in {start_locs} or {end_locs} ({details})".format(
-                start_locs=", ".join(locations[:-1]),
-                end_locs=locations[-1],
-                details="; ".join(errors),
-            )
-            raise NoAuthorizationError(err_msg)
-        else:
-            raise NoAuthorizationError(errors[0])
+        err_msg = f"Missing JWT in cookies ({'; '.join(errors)})"
+        raise NoAuthorizationError(err_msg)
 
     # Additional verifications provided by this extension
     if verify_type:
@@ -369,4 +248,4 @@ def _decode_jwt_from_request(
 
     custom_verification_for_token(jwt_header, decoded_token)
 
-    return decoded_token, jwt_header, jwt_location
+    return decoded_token, jwt_header, ''

@@ -1,5 +1,5 @@
 from typing import (Any, Optional)
-
+import logging
 import jwt
 from flask import (g, Response, Request, request)
 from werkzeug.local import LocalProxy
@@ -12,9 +12,8 @@ from .typing import (ExpiresDelta, Fresh)
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 
-import logging
-
 _logger = logging.getLogger(__name__)
+
 
 def get_jwt() -> dict:
     """
@@ -74,20 +73,6 @@ def get_jwt_identity() -> Any:
         The identity of the JWT in the current request
     """
     return get_jwt().get(config.identity_claim_key, None)
-
-
-def get_jwt_request_location() -> Optional[str]:
-    """
-    In a protected endpoint, this will return the "location" at which the JWT
-    that is accessing the endpoint was found--e.g., "cookies", "query-string",
-    "headers", or "json". If no JWT is present due to ``jwt_required(optional=True)``,
-    None is returned.
-
-    :return:
-        The location of the JWT in the current request; e.g., "cookies",
-        "query-string", "headers", or "json"
-    """
-    return g.get("_jwt_extended_jwt_location", None)
 
 
 def get_current_user() -> Any:
@@ -150,8 +135,6 @@ def set_current_user_from_token_string(access_token_string=False):
     try:
         jwt_manager = get_jwt_manager()
         jwt_dict = jwt_manager._decode_jwt(encoded_token=access_token_string)
-
-
     except (NoAuthorizationError, ExpiredSignatureError) as e:
         if type(e) == NoAuthorizationError and not optional:
             raise
@@ -371,11 +354,12 @@ def set_access_cookies(
         )
 
 
-def get_access_cookie_value(req: Request=None) -> dict or None:
+def get_access_cookie_value(req: Request = None) -> dict or None:
     """ TODO """
     if not req:
         req = request
     return req.cookies.get(config.access_cookie_name)
+
 
 def set_refresh_cookies(
     response: Response,
@@ -430,7 +414,7 @@ def set_refresh_cookies(
         )
 
 
-def get_refresh_cookie_value(req: Request=None) -> dict or None:
+def get_refresh_cookie_value(req: Request = None) -> dict or None:
     """ TODO """
     if not req:
         req = request
@@ -444,6 +428,9 @@ def unset_jwt_cookies(response: Response, domain: Optional[str] = None) -> None:
 
     :param response:
         A Flask Response object
+
+    :param domain:
+        TODO
     """
     unset_access_cookies(response, domain)
     unset_refresh_cookies(response, domain)

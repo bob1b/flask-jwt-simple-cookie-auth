@@ -16,7 +16,7 @@ except ModuleNotFoundError:  # pragma: no cover
 
 
 if TYPE_CHECKING:  # pragma: no cover
-    from flask_jwt_extended import JWTManager
+    from . import JWTManager
 
 
 def get_jwt_manager() -> "JWTManager":
