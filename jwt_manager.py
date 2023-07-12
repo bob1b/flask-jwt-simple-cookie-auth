@@ -84,7 +84,7 @@ class JWTManager(object):
         # Save this so we can use it later in the extension
         if not hasattr(app, "extensions"):  # pragma: no cover
             app.extensions = {}
-        app.extensions["flask-jwt-extended"] = self
+        app.extensions["flask-jwt-simple-cookie-auth"] = self
 
         if add_context_processor:
             app.context_processor(current_user_context_processor)

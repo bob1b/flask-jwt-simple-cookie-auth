@@ -7,6 +7,7 @@ from werkzeug.local import LocalProxy
 from .config import config
 from .internal_utils import get_jwt_manager
 from .typing import (ExpiresDelta, Fresh)
+from .tokens import _decode_jwt
 
 # Proxy to access the current user
 current_user: Any = LocalProxy(lambda: get_current_user())
@@ -130,26 +131,24 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
     jwt_manager = get_jwt_manager()
     return jwt_manager._decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
-
-def set_current_user_from_token_string(access_token_string=False):
-    try:
-        jwt_manager = get_jwt_manager()
-        jwt_dict = jwt_manager._decode_jwt(encoded_token=access_token_string)
-    except (NoAuthorizationError, ExpiredSignatureError) as e:
-        if type(e) == NoAuthorizationError and not optional:
-            raise
-        if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-            raise
-        g._jwt_extended_jwt = {}
-        g._jwt_extended_jwt_header = {}
-        g._jwt_extended_jwt_user = {"loaded_user": None}
-        g._jwt_extended_jwt_location = None
-        return None
-
-    g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
-    g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt = jwt_data
-    g._jwt_extended_jwt_location = jwt_location
+#
+# def set_current_user_from_token_string(access_token_string=False):
+#     try:
+#         # jwt_manager = get_jwt_manager()
+#         jwt_dict = _decode_jwt(encoded_token=access_token_string)
+#     except (NoAuthorizationError, ExpiredSignatureError) as e:
+#         if type(e) == NoAuthorizationError and not optional:
+#             raise
+#         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
+#             raise
+#         g._jwt_extended_jwt = {}
+#         g._jwt_extended_jwt_header = {}
+#         g._jwt_extended_jwt_user = {"loaded_user": None}
+#         return None
+#
+#     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
+#     g._jwt_extended_jwt_header = jwt_header
+#     g._jwt_extended_jwt = jwt_data
 
 
 def create_access_token(

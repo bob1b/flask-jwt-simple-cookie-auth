@@ -36,42 +36,6 @@ class _Config(object):
         return self._public_key if self.is_asymmetric else self._secret_key
 
     @property
-    def token_location(self) -> Sequence[str]:
-        locations = current_app.config["JWT_TOKEN_LOCATION"]
-        if isinstance(locations, str):
-            locations = (locations,)
-        elif not isinstance(locations, Iterable):
-            raise RuntimeError("JWT_TOKEN_LOCATION must be a sequence or a set")
-        elif not locations:
-            raise RuntimeError(
-                "JWT_TOKEN_LOCATION must contain at least one "
-                'of "headers", "cookies", "query_string", or "json"'
-            )
-        for location in locations:
-            if location not in ("headers", "cookies", "query_string", "json"):
-                raise RuntimeError(
-                    "JWT_TOKEN_LOCATION can only contain "
-                    '"headers", "cookies", "query_string", or "json"'
-                )
-        return locations
-
-    @property
-    def jwt_in_cookies(self) -> bool:
-        return "cookies" in self.token_location
-
-    @property
-    def jwt_in_headers(self) -> bool:
-        return "headers" in self.token_location
-
-    @property
-    def jwt_in_query_string(self) -> bool:
-        return "query_string" in self.token_location
-
-    @property
-    def jwt_in_json(self) -> bool:
-        return "json" in self.token_location
-
-    @property
     def header_name(self) -> str:
         name = current_app.config["JWT_HEADER_NAME"]
         if not name:

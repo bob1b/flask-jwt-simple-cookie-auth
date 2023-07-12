@@ -1,15 +1,11 @@
 from datetime import (datetime, timezone)
 from functools import wraps
-from re import split
 from typing import (Any, Optional, Sequence, Tuple, Union)
-
 from flask import (current_app, g, request)
-from werkzeug.exceptions import BadRequest
 
 from .config import config
 from jwt import ExpiredSignatureError
-from .exceptions import (CSRFError, FreshTokenRequired, InvalidHeaderError, InvalidQueryParamError,
-                         NoAuthorizationError, UserLookupError)
+from .exceptions import (CSRFError, FreshTokenRequired, NoAuthorizationError, UserLookupError)
 from .internal_utils import (custom_verification_for_token, has_user_lookup, user_lookup, verify_token_not_blocklisted,
                              verify_token_type)
 from .utils import (decode_token, get_unverified_jwt_headers)
@@ -33,7 +29,6 @@ def verify_jwt_in_request(
     no_exception_on_expired: bool = False,
     fresh: bool = False,
     refresh: bool = False,
-    locations: Optional[LocationType] = None,
     verify_type: bool = True,
     skip_revocation_check: bool = False,
 ) -> Optional[Tuple[dict, dict]]:
@@ -56,12 +51,6 @@ def verify_jwt_in_request(
     :param refresh:
         If ``True``, requires a refresh JWT to access this endpoint. If ``False``,
         requires an access JWT to access this endpoint. Defaults to ``False``
-
-    :param locations:
-        A location or list of locations to look for the JWT in this request, for
-        example ``'headers'`` or ``['headers', 'cookies']``. Defaults to ``None``
-        which indicates that JWTs will be looked for in the locations defined by the
-        ``JWT_TOKEN_LOCATION`` configuration option.
 
     :param verify_type:
         If ``True``, the token type (access or refresh) will be checked according
@@ -86,8 +75,7 @@ def verify_jwt_in_request(
         return None
 
     try:
-        jwt_data, jwt_header, jwt_location = _decode_jwt_from_request(
-            locations,
+        jwt_data, jwt_header = _decode_jwt_from_request(
             fresh,
             refresh=refresh,
             verify_type=verify_type,
@@ -102,7 +90,6 @@ def verify_jwt_in_request(
         g._jwt_extended_jwt = {}
         g._jwt_extended_jwt_header = {}
         g._jwt_extended_jwt_user = {"loaded_user": None}
-        g._jwt_extended_jwt_location = None
         return None
 
     # Save these at the very end so that they are only saved in the request
@@ -110,7 +97,6 @@ def verify_jwt_in_request(
     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
     g._jwt_extended_jwt_header = jwt_header
     g._jwt_extended_jwt = jwt_data
-    g._jwt_extended_jwt_location = jwt_location
 
     return jwt_header, jwt_data
 
@@ -119,7 +105,6 @@ def jwt_required(
     optional: bool = False,
     fresh: bool = False,
     refresh: bool = False,
-    locations: Optional[LocationType] = None,
     verify_type: bool = True,
     skip_revocation_check: bool = False,
 ) -> Any:
@@ -142,12 +127,6 @@ def jwt_required(
         If ``True``, requires a refresh JWT to access this endpoint. If ``False``,
         requires an access JWT to access this endpoint. Defaults to ``False``.
 
-    :param locations:
-        A location or list of locations to look for the JWT in this request, for
-        example ``'headers'`` or ``['headers', 'cookies']``. Defaults to ``None``
-        which indicates that JWTs will be looked for in the locations defined by the
-        ``JWT_TOKEN_LOCATION`` configuration option.
-
     :param verify_type:
         If ``True``, the token type (access or refresh) will be checked according
         to the ``refresh`` argument. If ``False``, type will not be checked and both
@@ -161,9 +140,7 @@ def jwt_required(
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
-            verify_jwt_in_request(
-                optional, fresh, refresh, locations, verify_type, skip_revocation_check
-            )
+            verify_jwt_in_request(optional, fresh, refresh, verify_type, skip_revocation_check)
             return current_app.ensure_sync(fn)(*args, **kwargs)
 
         return decorator
@@ -217,10 +194,8 @@ def _decode_jwt_from_request(
     refresh: bool = False,
     verify_type: bool = True,
     skip_revocation_check: bool = False,
-) -> Tuple[dict, dict, str]:
+) -> Tuple[dict, dict]:
 
-    # Try to find the token from one of these locations. It only needs to exist
-    # in one place to be valid (not every location).
     errors = []
     decoded_token = None
     try:
@@ -230,8 +205,6 @@ def _decode_jwt_from_request(
     except NoAuthorizationError as e:
         errors.append(str(e))
 
-    # Do some work to make a helpful and human-readable error message if no
-    # token was found in any of the expected locations.
     if not decoded_token:
         err_msg = f"Missing JWT in cookies ({'; '.join(errors)})"
         raise NoAuthorizationError(err_msg)
@@ -248,4 +221,4 @@ def _decode_jwt_from_request(
 
     custom_verification_for_token(jwt_header, decoded_token)
 
-    return decoded_token, jwt_header, ''
+    return decoded_token, jwt_header

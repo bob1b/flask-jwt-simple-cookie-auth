@@ -21,11 +21,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def get_jwt_manager() -> "JWTManager":
     try:
-        return current_app.extensions["flask-jwt-extended"]
+        return current_app.extensions["flask-jwt-simple-cookie-auth"]
     except KeyError:  # pragma: no cover
         raise RuntimeError(
-            "You must initialize a JWTManager with this flask "
-            "application before using this method"
+            "You must initialize a JWTManager with this flask application before using this method"
         ) from None
 
 
