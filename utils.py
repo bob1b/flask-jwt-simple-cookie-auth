@@ -222,7 +222,7 @@ def create_refresh_token(
 
     :param expires_delta:
         A ``datetime.timedelta`` for how long this token should last before it expires.
-        Set to False to disable expiration. If this is None, it will use the
+        Set to False in order to disable expiration. If this is None, it will use the
         ``JWT_REFRESH_TOKEN_EXPIRES`` config value (see :ref:`Configuration Options`)
 
     :param additional_claims:
@@ -231,7 +231,7 @@ def create_refresh_token(
         :meth:`~flask_jwt_extended.JWTManager.additional_claims_loader` callback.
         On conflict, these claims take presidence.
 
-    :param headers:
+    :param additional_headers:
         Optional. A hash of headers to include in the refresh token. These headers
         are merged into the default headers (alg, typ) and headers returned from the
         :meth:`~flask_jwt_extended.JWTManager.additional_headers_loader` callback.

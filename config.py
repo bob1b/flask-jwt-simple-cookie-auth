@@ -96,7 +96,7 @@ class _Config(object):
 
     @property
     def csrf_protect(self) -> bool:
-        return self.jwt_in_cookies and current_app.config["JWT_COOKIE_CSRF_PROTECT"]
+        return current_app.config["JWT_COOKIE_CSRF_PROTECT"]
 
     @property
     def csrf_request_methods(self) -> Iterable[str]:
