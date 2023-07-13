@@ -6,3 +6,10 @@ from .utils import (create_access_token, create_refresh_token, current_user, dec
 from .view_decorators import (jwt_required, verify_jwt_in_request)
 
 __version__ = "b4.5.2"  # modified by bob1b
+
+# TODO - is a user logged in or not? return user_id or None
+# TODO - JWT parsing utils
+# TODO - token creation utils
+# TODO - auto token refreshing before request is processed
+# TODO - log in / log out
+# TODO - token expiration config
