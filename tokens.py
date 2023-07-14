@@ -4,9 +4,10 @@ from datetime import (datetime, timedelta, timezone)
 from hmac import compare_digest
 from json import JSONEncoder
 from typing import (Any, Iterable, List, Type, Union)
-from flask import request, current_app
+from flask import current_app
 
-from flask import jsonify, request, g
+from flask import request, g
+from .config import config
 from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies,
                                             verify_jwt_in_request, decode_token, unset_jwt_cookies)
 from jwt import ExpiredSignatureError
@@ -142,7 +143,7 @@ def refresh_expiring_jwts():
         verify_jwt_in_request(optional=True)
     except ExpiredSignatureError:
         access_token_data = decode_token(enc_access_token, csrf_token, allow_expired=True)
-        user_id = access_token_data.get("sub")
+        user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
     except Exception as e:
         _logger.error(f'exception: {method}: {e}')
         return str(e), 500

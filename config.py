@@ -87,14 +87,6 @@ class _Config(object):
         return current_app.config["JWT_COOKIE_SAMESITE"]
 
     @property
-    def json_key(self) -> str:
-        return current_app.config["JWT_JSON_KEY"]
-
-    @property
-    def refresh_json_key(self) -> str:
-        return current_app.config["JWT_REFRESH_JSON_KEY"]
-
-    @property
     def csrf_protect(self) -> bool:
         return current_app.config["JWT_COOKIE_CSRF_PROTECT"]
 

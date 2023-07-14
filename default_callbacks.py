@@ -32,7 +32,7 @@ def default_blocklist_callback(jwt_headers: dict, jwt_data: dict) -> bool:
 
 def default_jwt_headers_callback(default_headers) -> dict:
     """
-    By default header typically consists of two parts: the type of the token,
+    By default, header typically consists of two parts: the type of the token,
     which is JWT, and the signing algorithm being used, such as HMAC SHA256
     or RSA. But we don't set the default header here we set it as empty which
     further by default set while encoding the token
