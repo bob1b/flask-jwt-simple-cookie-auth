@@ -176,20 +176,20 @@ def create_access_token(
 
     :param expires_delta:
         A ``datetime.timedelta`` for how long this token should last before it
-        expires. Set to False to disable expiration. If this is None, it will use
+        expires. Set to False in order to disable expiration. If this is None, it will use
         the ``JWT_ACCESS_TOKEN_EXPIRES`` config value (see :ref:`Configuration Options`)
 
     :param additional_claims:
         Optional. A hash of claims to include in the access token.  These claims are
-        merged into the default claims (exp, iat, etc) and claims returned from the
+        merged into the default claims (exp, iat, etc.) and claims returned from the
         :meth:`~flask_jwt_extended.JWTManager.additional_claims_loader` callback.
-        On conflict, these claims take presidence.
+        On conflict, these claims take precedence.
 
-    :param headers:
+    :param additional_headers:
         Optional. A hash of headers to include in the access token. These headers
         are merged into the default headers (alg, typ) and headers returned from
         the :meth:`~flask_jwt_extended.JWTManager.additional_headers_loader`
-        callback. On conflict, these headers take presidence.
+        callback. On conflict, these headers take precedence.
 
     :return:
         An encoded access token

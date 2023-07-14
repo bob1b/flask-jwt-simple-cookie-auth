@@ -14,14 +14,6 @@ class JWTDecodeError(JWTExtendedException):
     pass
 
 
-class InvalidHeaderError(JWTExtendedException):
-    """
-    An error getting header information from a request
-    """
-
-    pass
-
-
 class InvalidQueryParamError(JWTExtendedException):
     """
     An error when a query string param is not in the correct format

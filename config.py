@@ -36,17 +36,6 @@ class _Config(object):
         return self._public_key if self.is_asymmetric else self._secret_key
 
     @property
-    def header_name(self) -> str:
-        name = current_app.config["JWT_HEADER_NAME"]
-        if not name:
-            raise RuntimeError("JWT_ACCESS_HEADER_NAME cannot be empty")
-        return name
-
-    @property
-    def header_type(self) -> str:
-        return current_app.config["JWT_HEADER_TYPE"]
-
-    @property
     def query_string_name(self) -> str:
         return current_app.config["JWT_QUERY_STRING_NAME"]
 
@@ -113,14 +102,6 @@ class _Config(object):
     @property
     def refresh_csrf_cookie_path(self) -> str:
         return current_app.config["JWT_REFRESH_CSRF_COOKIE_PATH"]
-
-    @property
-    def access_csrf_header_name(self) -> str:
-        return current_app.config["JWT_ACCESS_CSRF_HEADER_NAME"]
-
-    @property
-    def refresh_csrf_header_name(self) -> str:
-        return current_app.config["JWT_REFRESH_CSRF_HEADER_NAME"]
 
     @property
     def csrf_check_form(self) -> bool:

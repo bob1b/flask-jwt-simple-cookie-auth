@@ -122,10 +122,6 @@ class JWTManager(object):
         def handle_invalid_issuer_error(e):
             return self._invalid_token_callback(str(e))
 
-        @app.errorhandler(InvalidHeaderError)
-        def handle_invalid_header_error(e):
-            return self._invalid_token_callback(str(e))
-
         @app.errorhandler(InvalidTokenError)
         def handle_invalid_token_error(e):
             return self._invalid_token_callback(str(e))
@@ -182,8 +178,6 @@ class JWTManager(object):
         app.config.setdefault("JWT_ENCODE_AUDIENCE", None)
         app.config.setdefault("JWT_ENCODE_ISSUER", None)
         app.config.setdefault("JWT_ERROR_MESSAGE_KEY", "msg")
-        app.config.setdefault("JWT_HEADER_NAME", "Authorization")
-        app.config.setdefault("JWT_HEADER_TYPE", "Bearer")
         app.config.setdefault("JWT_IDENTITY_CLAIM", "sub")
         app.config.setdefault("JWT_JSON_KEY", "access_token")
         app.config.setdefault("JWT_PRIVATE_KEY", None)
