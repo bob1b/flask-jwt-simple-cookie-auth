@@ -15,6 +15,13 @@ from jwt import ExpiredSignatureError
 from .exceptions import (CSRFError, JWTDecodeError)
 from .typing import (ExpiresDelta, Fresh)
 
+def expires_in_seconds(self, use_refresh_expiration_delta=False):
+    token_data = decode_token(self.token, allow_expired=True)
+    expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
+
+    if use_refresh_expiration_delta and type(self) == AccessToken:
+        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
+    return expires_in
 
 def _encode_jwt(
     algorithm: str,
@@ -208,11 +215,3 @@ def after_request(response):
         unset_jwt_cookies(response)
 
     return response
-
-def expires_in_seconds(self, use_refresh_expiration_delta=False):
-    token_data = decode_token(self.token, allow_expired=True)
-    expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
-
-    if use_refresh_expiration_delta and type(self) == AccessToken:
-        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
-    return expires_in

@@ -258,7 +258,7 @@ class JWTManager(object):
     def encode_key_loader(self, callback: Callable) -> Callable:
         """
         This decorator sets the callback function for dynamically setting the JWT
-        encode key based on the tokens identity. Think carefully before using this
+        encode key based on the token's identity. Think carefully before using this
         functionality, in most cases you probably don't need it.
 
         The decorated function must take **one** argument.
