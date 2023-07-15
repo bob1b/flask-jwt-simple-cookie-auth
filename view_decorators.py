@@ -148,6 +148,10 @@ def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
 def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     # Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or the
     # access token was refreshed
+
+    if hasattr(g, 'unset_tokens') and g.unset_tokens:
+        raise NoAuthorizationError(f'Missing cookie <all unset>')
+
     if not refresh: # access token
         cookie_key = config.access_cookie_name
         if hasattr(g, 'new_access_token'):
