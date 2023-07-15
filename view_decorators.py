@@ -5,6 +5,7 @@ from flask import (current_app, g, request)
 
 from .config import config
 from jwt import ExpiredSignatureError
+from .tokens import refresh_expiring_jwts, after_request
 from .exceptions import (CSRFError, FreshTokenRequired, NoAuthorizationError, UserLookupError)
 from .internal_utils import (custom_verification_for_token, has_user_lookup, user_lookup, verify_token_not_blocklisted,
                              verify_token_type)
@@ -72,6 +73,7 @@ def verify_jwt_in_request(
             verify_type=verify_type,
             skip_revocation_check=skip_revocation_check,
         )
+        refresh_expiring_jwts()
 
     except (NoAuthorizationError, ExpiredSignatureError) as e:
         if type(e) == NoAuthorizationError and not optional:
@@ -92,13 +94,8 @@ def verify_jwt_in_request(
     return jwt_header, jwt_data
 
 
-def jwt_required(
-    optional: bool = False,
-    fresh: bool = False,
-    refresh: bool = False,
-    verify_type: bool = True,
-    skip_revocation_check: bool = False,
-) -> Any:
+def jwt_sca(optional: bool = False, fresh: bool = False, refresh: bool = False, verify_type: bool = True,
+            skip_revocation_check: bool = False) -> Any:
     """
         A decorator to protect a Flask endpoint with JSON Web Tokens.
 
@@ -129,8 +126,8 @@ def jwt_required(
         @wraps(fn)
         def decorator(*args, **kwargs):
             verify_jwt_in_request(optional, fresh, refresh, verify_type, skip_revocation_check)
-            return current_app.ensure_sync(fn)(*args, **kwargs)
-
+            response = current_app.ensure_sync(fn)(*args, **kwargs)
+            return after_request(response) # update any refreshed cookies
         return decorator
 
     return wrapper
@@ -149,12 +146,21 @@ def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
 
 
 def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
-    if refresh:
-        cookie_key = config.refresh_cookie_name
-    else:
+    # Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or the
+    # access token was refreshed
+    if not refresh: # access token
         cookie_key = config.access_cookie_name
+        if hasattr(g, 'new_access_token'):
+            encoded_token = g.new_access_token
+        else:
+            encoded_token = request.cookies.get(cookie_key)
+    else: # refresh token
+        cookie_key = config.refresh_cookie_name
+        if hasattr(g, 'new_refresh_token'):
+            encoded_token = g.new_refresh_token
+        else:
+            encoded_token = request.cookies.get(cookie_key)
 
-    encoded_token = request.cookies.get(cookie_key)
     if not encoded_token:
         raise NoAuthorizationError(f'Missing cookie "{cookie_key}"')
 
@@ -169,16 +175,13 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
 
 
 def _decode_jwt_from_request(
-    fresh: bool,
-    refresh: bool = False,
-    verify_type: bool = True,
-    skip_revocation_check: bool = False,
+        fresh: bool, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
 ) -> Tuple[dict, dict]:
 
     errors = []
     decoded_token = None
     try:
-        encoded_token, csrf_token = _decode_jwt_from_cookies(refresh)
+        encoded_token, csrf_token = _decode_jwt_from_cookies(refresh) # this method checks flask.g before actual cookies
         decoded_token = decode_token(encoded_token, csrf_token)
         jwt_header = get_unverified_jwt_headers(encoded_token)
     except NoAuthorizationError as e:

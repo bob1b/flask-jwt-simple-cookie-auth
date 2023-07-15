@@ -6,8 +6,8 @@ from json import JSONEncoder
 from typing import (Any, Iterable, List, Type, Union)
 from flask import current_app, request, g
 from .config import config
-from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies, verify_jwt_in_request,
-                                            decode_token, unset_jwt_cookies)
+from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies, set_refresh_cookies,
+                                            verify_jwt_in_request, decode_token, unset_jwt_cookies)
 from jwt import ExpiredSignatureError
 
 from .exceptions import (CSRFError, JWTDecodeError)
@@ -114,30 +114,35 @@ def _decode_jwt(
 
     return decoded_token
 
+def access_token_has_expired():
+    # TODO - probably will need to use jwt to check expiration, look for code raising ExpiredSignatureError
+    pass
 
-@current_app.before_request
 def refresh_expiring_jwts():
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
     method = f'refresh_expiring_jwts()'
+
+    if hasattr(g.checked_expiring) and g.checked_expiring == True: # already checked for expiring JWTs
+        return
+    g.checked_expiring = True
+
     enc_access_token = request.cookies.get('access_token_cookie')
     enc_refresh_token = request.cookies.get('refresh_token_cookie')
     csrf_token = request.cookies.get('csrf_access_token')
 
-    try:
-        verify_jwt_in_request(optional=True)
-    except ExpiredSignatureError:
+    if jwt2.access_token_has_expired(): # TODO - add new method
         access_token_data = decode_token(enc_access_token, csrf_token, allow_expired=True)
         user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
-    except Exception as e:
-        _logger.error(f'exception: {method}: {e}')
-        return str(e), 500
     else:
         # token hasn't yet expired, get the info so that we can further check validity
         access_token_data = get_jwt()
         user_id = get_jwt_identity()
 
+    # user is not logged in, nothing to do
     if not access_token_data:
         return
+
+# TODO - check rest of below logic
 
     # We need a valid expired token (which is present in the Access Token table) in order to generate a new
     #   access token for this user session
@@ -146,7 +151,7 @@ def refresh_expiring_jwts():
     refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id)
 
     if not access_token:
-        # _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n {enc_access_token}')
+        _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n {enc_access_token}')
         return
 
     # found unexpired access token - no need to refresh
@@ -185,7 +190,7 @@ def refresh_expiring_jwts():
     request.cookies = modified_cookies
     # TODO - update current_user - XXX this might be causing the CSRF issue?
 
-@app.after_request
+
 def after_request(response):
 
     # Set the new access token as a response cookie
@@ -195,7 +200,7 @@ def after_request(response):
 
     if hasattr(g, "new_refresh_token"):
         _logger.info(f"g.new_refresh_token = {g.new_refresh_token} ***")
-        set_access_cookies(response, g.new_refresh_token)
+        set_refresh_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
     if hasattr(g, "unset_tokens") and g.unset_tokens:

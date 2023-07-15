@@ -18,7 +18,7 @@ _logger = logging.getLogger(__name__)
 def get_jwt() -> dict:
     """
         In a protected endpoint, this will return the python dictionary which has the payload of the JWT that is
-        accessing the endpoint. If no JWT is present due to ``jwt_required(optional=True)``, an empty dictionary is
+        accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
         returned.
 
         :return:
@@ -32,17 +32,14 @@ def get_jwt() -> dict:
         decoded_jwt = g.get("_jwt_extended_jwt", None)
 
     if decoded_jwt is None:
-        raise RuntimeError(
-            "You must call `@jwt_required()` or `verify_jwt_in_request()` "
-            "before using this method"
-        )
+        raise RuntimeError("You must call `@jwt_sca()` or `verify_jwt_in_request()` before using this method")
     return decoded_jwt
 
 
 def get_jwt_header() -> dict:
     """
         In a protected endpoint, this will return the python dictionary which has the header of the JWT that is
-        accessing the endpoint. If no JWT is present due to ``jwt_required(optional=True)``, an empty dictionary is
+        accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
         returned.
 
         :return:
@@ -56,14 +53,14 @@ def get_jwt_header() -> dict:
         decoded_header = g.get("_jwt_extended_jwt", None)
 
     if decoded_header is None:
-        raise RuntimeError("You must call `@jwt_required()` or `verify_jwt_in_request()` before using this method")
+        raise RuntimeError("You must call `@jwt_sca()` or `verify_jwt_in_request()` before using this method")
     return decoded_header
 
 
 def get_jwt_identity() -> Any:
     """
         In a protected endpoint, this will return the identity of the JWT that is accessing the endpoint. If no JWT is
-        present due to ``jwt_required(optional=True)``, ``None`` is returned.
+        present due to ``jwt_sca(optional=True)``, ``None`` is returned.
 
         :return:
             The identity of the JWT in the current request
@@ -78,7 +75,7 @@ def get_current_user() -> Any:
         This is only usable if :meth:`~flask_jwt_extended.JWTManager.user_lookup_loader` is configured. If the user
         loader callback is not being used, this will raise an error.
 
-        If no JWT is present due to ``jwt_required(optional=True)``, ``None`` is returned.
+        If no JWT is present due to ``jwt_sca(optional=True)``, ``None`` is returned.
 
         :return:
             The current user object for the JWT in the current request
@@ -152,7 +149,7 @@ def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Opti
 
         :param fresh:
             If this token should be marked as fresh, and can thus access endpoints protected with
-            ``@jwt_required(fresh=True)``. Defaults to ``False``.
+            ``@jwt_sca(fresh=True)``. Defaults to ``False``.
 
             This value can also be a ``datetime.timedelta``, which indicate how long this token will be considered
             fresh.
