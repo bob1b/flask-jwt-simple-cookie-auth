@@ -53,9 +53,7 @@ def default_user_identity_callback(userdata: Any) -> Any:
     return userdata
 
 
-def default_expired_token_callback(
-    _expired_jwt_header: dict, _expired_jwt_data: dict
-) -> ResponseReturnValue:
+def default_expired_token_callback(_expired_jwt_header: dict, _expired_jwt_data: dict) -> ResponseReturnValue:
     """
     By default, if an expired token attempts to access a protected endpoint,
     we return a generic error message with a 401 status
@@ -86,9 +84,7 @@ def default_unauthorized_callback(error_string: str) -> ResponseReturnValue:
     return jsonify({config.error_msg_key: error_string}), HTTPStatus.UNAUTHORIZED
 
 
-def default_needs_fresh_token_callback(
-    jwt_header: dict, jwt_data: dict
-) -> ResponseReturnValue:
+def default_needs_fresh_token_callback(jwt_header: dict, jwt_data: dict) -> ResponseReturnValue:
     """
     By default, if a non-fresh jwt is used to access a ```fresh_jwt_required```
     endpoint, we return a general error message with a 401 status code
@@ -99,9 +95,7 @@ def default_needs_fresh_token_callback(
     )
 
 
-def default_revoked_token_callback(
-    jwt_header: dict, jwt_data: dict
-) -> ResponseReturnValue:
+def default_revoked_token_callback(jwt_header: dict, jwt_data: dict) -> ResponseReturnValue:
     """
     By default, if a revoked token is used to access a protected endpoint, we
     return a general error message with a 401 status code
@@ -112,13 +106,10 @@ def default_revoked_token_callback(
     )
 
 
-def default_user_lookup_error_callback(
-    _jwt_header: dict, jwt_data: dict
-) -> ResponseReturnValue:
+def default_user_lookup_error_callback(_jwt_header: dict, jwt_data: dict) -> ResponseReturnValue:
     """
-    By default, if a user_lookup callback is defined and the callback
-    function returns None, we return a general error message with a 401
-    status code
+    By default, if a user_lookup callback is defined and the callback function returns None, we return a general error
+    message with a 401 status code
     """
     identity = jwt_data[config.identity_claim_key]
     result = {config.error_msg_key: f"Error loading the user {identity}"}
@@ -132,9 +123,7 @@ def default_token_verification_callback(_jwt_header: dict, _jwt_data: dict) -> b
     return True
 
 
-def default_token_verification_failed_callback(
-    _jwt_header: dict, _jwt_data: dict
-) -> ResponseReturnValue:
+def default_token_verification_failed_callback(_jwt_header: dict, _jwt_data: dict) -> ResponseReturnValue:
     """
     By default, if the user claims verification failed, we return a generic
     error message with a 400 status code

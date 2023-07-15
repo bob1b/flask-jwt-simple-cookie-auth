@@ -1,56 +1,34 @@
 class JWTExtendedException(Exception):
-    """
-    Base except which all flask_jwt_extended errors extend
-    """
+    """ Base except which all flask_jwt_extended errors extend """
 
     pass
-
 
 class JWTDecodeError(JWTExtendedException):
-    """
-    An error decoding a JWT
-    """
-
-    pass
-
-
-class InvalidQueryParamError(JWTExtendedException):
-    """
-    An error when a query string param is not in the correct format
-    """
+    """ An error decoding a JWT """
 
     pass
 
 
 class NoAuthorizationError(JWTExtendedException):
-    """
-    An error raised when no authorization token was found in a protected endpoint
-    """
+    """ An error raised when no authorization token was found in a protected endpoint """
 
     pass
 
 
 class CSRFError(JWTExtendedException):
-    """
-    An error with CSRF protection
-    """
+    """ An error with CSRF protection """
 
     pass
 
 
 class WrongTokenError(JWTExtendedException):
-    """
-    Error raised when attempting to use a refresh token to access an endpoint
-    or vice versa
-    """
+    """ Error raised when attempting to use a refresh token to access an endpoint or vice versa """
 
     pass
 
 
 class RevokedTokenError(JWTExtendedException):
-    """
-    Error raised when a revoked token attempt to access a protected endpoint
-    """
+    """ Error raised when a revoked token attempt to access a protected endpoint """
 
     def __init__(self, jwt_header: dict, jwt_data: dict) -> None:
         super().__init__("Token has been revoked")
@@ -59,10 +37,7 @@ class RevokedTokenError(JWTExtendedException):
 
 
 class FreshTokenRequired(JWTExtendedException):
-    """
-    Error raised when a valid, non-fresh JWT attempt to access an endpoint
-    protected by fresh_jwt_required
-    """
+    """ Error raised when a valid, non-fresh JWT attempt to access an endpoint protected by fresh_jwt_required """
 
     def __init__(self, message, jwt_header: dict, jwt_data: dict) -> None:
         super().__init__(message)
@@ -71,10 +46,8 @@ class FreshTokenRequired(JWTExtendedException):
 
 
 class UserLookupError(JWTExtendedException):
-    """
-    Error raised when a user_lookup callback function returns None, indicating
-    that it cannot or will not load a user for the given identity.
-    """
+    """ Error raised when a user_lookup callback function returns None, indicating that it cannot or will not load a
+        user for the given identity. """
 
     def __init__(self, message, jwt_header: dict, jwt_data: dict) -> None:
         super().__init__(message)
@@ -83,10 +56,8 @@ class UserLookupError(JWTExtendedException):
 
 
 class UserClaimsVerificationError(JWTExtendedException):
-    """
-    Error raised when the claims_verification_callback function returns False,
-    indicating that the expected user claims are invalid
-    """
+    """ Error raised when the claims_verification_callback function returns False, indicating that the expected user
+        claims are invalid """
 
     def __init__(self, message, jwt_header: dict, jwt_data: dict) -> None:
         super().__init__(message)

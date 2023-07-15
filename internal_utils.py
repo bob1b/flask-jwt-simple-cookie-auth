@@ -1,8 +1,6 @@
 import json
 from typing import (Any, Type, TYPE_CHECKING)
-
 from flask import (current_app, Flask)
-
 from .exceptions import (RevokedTokenError, UserClaimsVerificationError, WrongTokenError)
 
 try:
@@ -30,14 +28,12 @@ def get_jwt_manager() -> "JWTManager":
 
 def has_user_lookup() -> bool:
     jwt_manager = get_jwt_manager()
-    return jwt_manager._user_lookup_callback is not None
+    return jwt_manager.user_lookup_callback is not None
 
 
 def user_lookup(*args, **kwargs) -> Any:
     jwt_manager = get_jwt_manager()
-    return jwt_manager._user_lookup_callback and jwt_manager._user_lookup_callback(
-        *args, **kwargs
-    )
+    return jwt_manager.user_lookup_callback and jwt_manager.user_lookup_callback(*args, **kwargs)
 
 
 def verify_token_type(decoded_token: dict, refresh: bool) -> None:
@@ -49,13 +45,13 @@ def verify_token_type(decoded_token: dict, refresh: bool) -> None:
 
 def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
     jwt_manager = get_jwt_manager()
-    if jwt_manager._token_in_blocklist_callback(jwt_header, jwt_data):
+    if jwt_manager.token_in_blocklist_callback(jwt_header, jwt_data):
         raise RevokedTokenError(jwt_header, jwt_data)
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
     jwt_manager = get_jwt_manager()
-    if not jwt_manager._token_verification_callback(jwt_header, jwt_data):
+    if not jwt_manager.token_verification_callback(jwt_header, jwt_data):
         error_msg = "User claims verification failed"
         raise UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
 
@@ -64,21 +60,19 @@ class JSONEncoder(json.JSONEncoder):
     """A JSON encoder which uses the app.json_provider_class for the default"""
 
     def default(self, o: Any) -> Any:
-        # If the registered JSON provider does not implement a default classmethod
-        # use the method defined by the DefaultJSONProvider
-        default = getattr(
-            current_app.json_provider_class, "default", DefaultJSONProvider.default
-        )
+        # If the registered JSON provider does not implement a default class method use the method defined by the
+        # DefaultJSONProvider
+        default = getattr(current_app.json_provider_class, "default", DefaultJSONProvider.default)
         return default(o)
 
 
 def get_json_encoder(app: Flask) -> Type[json.JSONEncoder]:
     """Get the JSON Encoder for the provided flask app
 
-    Starting with flask version 2.2 the flask application provides a
-    interface to register a custom JSON Encoder/Decoder under the json_provider_class.
-    As this interface is not compatible with the standard JSONEncoder, the `default`
-    method of the class is wrapped.
+    Starting with flask version 2.2 the flask application provides an interface to register a custom JSON
+    Encoder/Decoder under the json_provider_class.
+
+    As this interface is not compatible with the standard JSONEncoder, the `default` method of the class is wrapped.
 
     Lookup Order:
       - app.json_encoder - For Flask < 2.2

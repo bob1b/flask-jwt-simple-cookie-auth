@@ -4,14 +4,11 @@ from datetime import (datetime, timedelta, timezone)
 from hmac import compare_digest
 from json import JSONEncoder
 from typing import (Any, Iterable, List, Type, Union)
-from flask import current_app
-
-from flask import request, g
+from flask import current_app, request, g
 from .config import config
-from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies,
-                                            verify_jwt_in_request, decode_token, unset_jwt_cookies)
+from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies, verify_jwt_in_request,
+                                            decode_token, unset_jwt_cookies)
 from jwt import ExpiredSignatureError
-
 
 from .exceptions import (CSRFError, JWTDecodeError)
 from .typing import (ExpiresDelta, Fresh)
@@ -71,13 +68,7 @@ def _encode_jwt(
     if claim_overrides:
         token_data.update(claim_overrides)
 
-    return jwt.encode(
-        token_data,
-        secret,
-        algorithm,
-        json_encoder=json_encoder,  # type: ignore
-        headers=header_overrides,
-    )
+    return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
 
 
 def _decode_jwt(
@@ -99,13 +90,7 @@ def _decode_jwt(
     # This call verifies the ext, iat, and nbf claims
     # This optionally verifies the exp and aud claims if enabled
     decoded_token = jwt.decode(
-        encoded_token,
-        secret,
-        algorithms=algorithms,
-        audience=audience,
-        issuer=issuer,
-        leeway=leeway,
-        options=options,
+        encoded_token, secret, algorithms=algorithms, audience=audience, issuer=issuer, leeway=leeway, options=options
     )
 
     # Make sure that any custom claims we expect in the token are present
@@ -132,7 +117,6 @@ def _decode_jwt(
 
 @current_app.before_request
 def refresh_expiring_jwts():
-    # TODO - move method to flask_jwt_simple_cookie_auth?
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
     method = f'refresh_expiring_jwts()'
     enc_access_token = request.cookies.get('access_token_cookie')
@@ -192,8 +176,7 @@ def refresh_expiring_jwts():
     _logger.info(f'{method}: user #{user.id} {-1 * access_token_expires_in_seconds} seconds since access ' +
                  f"'token expiration. Refreshing access token ...")
 
-    db.session.delete(expired_access_token) # delete the old expired token
-    access_token = user.create_access_token(request=request)
+    access_token = user.create_access_token(request=request, replace=expired_access_token)
     g.unset_tokens = False
     g.new_access_token = access_token
 
@@ -207,8 +190,12 @@ def after_request(response):
 
     # Set the new access token as a response cookie
     if hasattr(g, "new_access_token"):
-        _logger.info(f"g.new_accestoken = {g.new_access_token} ***")
+        _logger.info(f"g.new_access_token = {g.new_access_token} ***")
         set_access_cookies(response, g.new_access_token)
+
+    if hasattr(g, "new_refresh_token"):
+        _logger.info(f"g.new_refresh_token = {g.new_refresh_token} ***")
+        set_access_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
     if hasattr(g, "unset_tokens") and g.unset_tokens:

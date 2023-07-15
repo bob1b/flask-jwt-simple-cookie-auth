@@ -169,9 +169,7 @@ class _Config(object):
             key = current_app.config.get("SECRET_KEY", None)
             if not key:
                 raise RuntimeError(
-                    "JWT_SECRET_KEY or flask SECRET_KEY "
-                    "must be set when using symmetric "
-                    'algorithm "{}"'.format(self.algorithm)
+                    f"JWT_SECRET_KEY or flask SECRET_KEY must be set when using symmetric algorithm '{self.algorithm}'"
                 )
         return key
 
@@ -180,9 +178,7 @@ class _Config(object):
         key = current_app.config["JWT_PUBLIC_KEY"]
         if not key:
             raise RuntimeError(
-                "JWT_PUBLIC_KEY must be set to use "
-                "asymmetric cryptography algorithm "
-                '"{}"'.format(self.algorithm)
+                f"JWT_PUBLIC_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
             )
         return key
 
@@ -191,9 +187,7 @@ class _Config(object):
         key = current_app.config["JWT_PRIVATE_KEY"]
         if not key:
             raise RuntimeError(
-                "JWT_PRIVATE_KEY must be set to use "
-                "asymmetric cryptography algorithm "
-                '"{}"'.format(self.algorithm)
+                f"JWT_PRIVATE_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
             )
         return key
 

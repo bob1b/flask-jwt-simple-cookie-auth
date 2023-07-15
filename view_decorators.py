@@ -33,43 +33,34 @@ def verify_jwt_in_request(
     skip_revocation_check: bool = False,
 ) -> Optional[Tuple[dict, dict]]:
     """
-    Verify that a valid JWT is present in the request, unless ``optional=True`` in
-    which case no JWT is also considered valid.
+        Verify that a valid JWT is present in the request, unless ``optional=True`` in
+        which case no JWT is also considered valid.
 
-    :param optional:
-        If ``True``, do not raise an error if no JWT is present in the request.
-        Defaults to ``False``.
+        :param optional:
+            If ``True``, do not raise an error if no JWT is present in the request. Defaults to ``False``.
 
-    :param no_exception_on_expired:
-        If ``True``, do not raise an error if no JWT is expired.
-        Defaults to ``False``.
+        :param no_exception_on_expired:
+            If ``True``, do not raise an error if no JWT is expired. Defaults to ``False``.
 
-    :param fresh:
-        If ``True``, require a JWT marked as ``fresh`` in order to be verified.
-        Defaults to ``False``.
+        :param fresh:
+            If ``True``, require a JWT marked as ``fresh`` in order to be verified. Defaults to ``False``.
 
-    :param refresh:
-        If ``True``, requires a refresh JWT to access this endpoint. If ``False``,
-        requires an access JWT to access this endpoint. Defaults to ``False``
+        :param refresh:
+            If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access JWT to access
+            this endpoint. Defaults to ``False``
 
-    :param verify_type:
-        If ``True``, the token type (access or refresh) will be checked according
-        to the ``refresh`` argument. If ``False``, type will not be checked and both
-        access and refresh tokens will be accepted.
+        :param verify_type:
+            If ``True``, the token type (access or refresh) will be checked according to the ``refresh`` argument. If
+            ``False``, type will not be checked and both access and refresh tokens will be accepted.
 
-    :param skip_revocation_check:
-        If ``True``, revocation status of the token will be *not* checked. If ``False``,
-        revocation status of the token will be checked.
+        :param skip_revocation_check:
+            If ``True``, revocation status of the token will *not* be checked. If ``False``, revocation status of the
+            token will be checked.
 
-    :param skip_revocation_check:
-        If ``True``, revocation status of the token will be *not* checked. If ``False``,
-        revocation status of the token will be checked.
-
-    :return:
-        A tuple containing the jwt_header and the jwt_data if a valid JWT is
-        present in the request. If ``optional=True`` and no JWT is in the request,
-        ``None`` will be returned instead. Raise an exception if an invalid JWT
-        is in the request.
+        :return:
+            A tuple containing the jwt_header and the jwt_data if a valid JWT is present in the request. If
+            ``optional=True`` and no JWT is in the request, ``None`` will be returned instead. Raise an exception if an
+            invalid JWT is in the request.
     """
     if request.method in config.exempt_methods:
         return None
@@ -109,32 +100,29 @@ def jwt_required(
     skip_revocation_check: bool = False,
 ) -> Any:
     """
-    A decorator to protect a Flask endpoint with JSON Web Tokens.
+        A decorator to protect a Flask endpoint with JSON Web Tokens.
 
-    Any route decorated with this will require a valid JWT to be present in the
-    request (unless optional=True, in which case no JWT is also valid) before the
-    endpoint can be called.
+        Any route decorated with this will require a valid JWT to be present in the request (unless optional=True, in
+        which case no JWT is also valid) before the endpoint can be called.
 
-    :param optional:
-        If ``True``, allow the decorated endpoint to be accessed if no JWT is present in
-        the request. Defaults to ``False``.
+        :param optional:
+            If ``True``, allow the decorated endpoint to be accessed if no JWT is present in the request. Defaults to
+            ``False``.
 
-    :param fresh:
-        If ``True``, require a JWT marked with ``fresh`` to be able to access this
-        endpoint. Defaults to ``False``.
+        :param fresh:
+            If ``True``, require a JWT marked with ``fresh`` to be able to access this endpoint. Defaults to ``False``.
 
-    :param refresh:
-        If ``True``, requires a refresh JWT to access this endpoint. If ``False``,
-        requires an access JWT to access this endpoint. Defaults to ``False``.
+        :param refresh:
+            If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access JWT to access
+            this endpoint. Defaults to ``False``.
 
-    :param verify_type:
-        If ``True``, the token type (access or refresh) will be checked according
-        to the ``refresh`` argument. If ``False``, type will not be checked and both
-        access and refresh tokens will be accepted.
+        :param verify_type:
+            If ``True``, the token type (access or refresh) will be checked according to the ``refresh`` argument. If
+            ``False``, type will not be checked and both access and refresh tokens will be accepted.
 
-    :param skip_revocation_check:
-        If ``True``, revocation status of the token will be *not* checked. If ``False``,
-        revocation status of the token will be checked.
+        :param skip_revocation_check:
+            If ``True``, revocation status of the token will be *not* checked. If ``False``, revocation status of the
+            token will be checked.
     """
 
     def wrapper(fn):
@@ -155,7 +143,7 @@ def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
     identity = jwt_data[config.identity_claim_key]
     user = user_lookup(jwt_header, jwt_data)
     if user is None:
-        error_msg = "user_lookup returned None for {}".format(identity)
+        error_msg = f"user_lookup returned None for {identity}"
         raise UserLookupError(error_msg, jwt_header, jwt_data)
     return {"loaded_user": user}
 
@@ -168,7 +156,7 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
 
     encoded_token = request.cookies.get(cookie_key)
     if not encoded_token:
-        raise NoAuthorizationError('Missing cookie "{}"'.format(cookie_key))
+        raise NoAuthorizationError(f'Missing cookie "{cookie_key}"')
 
     if config.csrf_protect and request.method in config.csrf_request_methods:
         csrf_value = request.cookies.get(config.access_csrf_cookie_name)
@@ -194,6 +182,7 @@ def _decode_jwt_from_request(
         decoded_token = decode_token(encoded_token, csrf_token)
         jwt_header = get_unverified_jwt_headers(encoded_token)
     except NoAuthorizationError as e:
+        jwt_header = False
         errors.append(str(e))
 
     if not decoded_token:
