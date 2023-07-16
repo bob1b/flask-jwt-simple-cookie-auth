@@ -1,4 +1,3 @@
-from datetime import (datetime, timezone)
 from functools import wraps
 from typing import (Any, Optional, Sequence, Tuple, Union)
 from flask import (current_app, g, request)
@@ -9,20 +8,9 @@ from .tokens import refresh_expiring_jwts, after_request
 from .exceptions import (CSRFError, FreshTokenRequired, NoAuthorizationError, UserLookupError)
 from .internal_utils import (custom_verification_for_token, has_user_lookup, user_lookup, verify_token_not_blocklisted,
                              verify_token_type)
-from .utils import (decode_token, get_unverified_jwt_headers)
+from .utils import (decode_token, get_unverified_jwt_headers, _verify_token_is_fresh)
 
 LocationType = Union[str, Sequence, None]
-
-
-def _verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
-    fresh = jwt_data["fresh"]
-    if isinstance(fresh, bool):
-        if not fresh:
-            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
-    else:
-        now = datetime.timestamp(datetime.now(timezone.utc))
-        if fresh < now:
-            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
 
 
 def verify_jwt_in_request(

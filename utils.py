@@ -1,13 +1,13 @@
 import jwt
+from datetime import (datetime, timezone)
 import logging
 from typing import (Any, Optional)
 from flask import (g, Response, Request, request)
 from werkzeug.local import LocalProxy
-
+from .exceptions import FreshTokenRequired
 from .config import config
 from .internal_utils import get_jwt_manager
 from .typing import (ExpiresDelta, Fresh)
-from .tokens import _decode_jwt
 
 # Proxy to access the current user
 current_user: Any = LocalProxy(lambda: get_current_user())
@@ -118,23 +118,23 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
     return jwt_manager.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
-def set_current_user_from_token_string(access_token_string=False):
-    try:
-        # jwt_manager = get_jwt_manager()
-        jwt_dict = _decode_jwt(encoded_token=access_token_string)
-    except (NoAuthorizationError, ExpiredSignatureError) as e:
-        if type(e) == NoAuthorizationError and not optional:
-            raise
-        if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-            raise
-        g._jwt_extended_jwt = {}
-        g._jwt_extended_jwt_header = {}
-        g._jwt_extended_jwt_user = {"loaded_user": None}
-        return None
-
-    g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
-    g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt = jwt_data
+# def set_current_user_from_token_string(access_token_string=False):
+#     try:
+#         # jwt_manager = get_jwt_manager()
+#         jwt_dict = _decode_jwt(encoded_token=access_token_string)
+#     except (NoAuthorizationError, ExpiredSignatureError) as e:
+#         if type(e) == NoAuthorizationError and not optional:
+#             raise
+#         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
+#             raise
+#         g._jwt_extended_jwt = {}
+#         g._jwt_extended_jwt_header = {}
+#         g._jwt_extended_jwt_user = {"loaded_user": None}
+#         return None
+#
+#     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
+#     g._jwt_extended_jwt_header = jwt_header
+#     g._jwt_extended_jwt = jwt_data
 
 
 def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Optional[ExpiresDelta] = None,
@@ -479,3 +479,13 @@ def unset_refresh_cookies(response: Response, domain: Optional[str] = None) -> N
 def current_user_context_processor() -> Any:
     return {"current_user": get_current_user()}
 
+
+def _verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
+    fresh = jwt_data["fresh"]
+    if isinstance(fresh, bool):
+        if not fresh:
+            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
+    else:
+        now = datetime.timestamp(datetime.now(timezone.utc))
+        if fresh < now:
+            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)

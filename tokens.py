@@ -6,8 +6,7 @@ from json import JSONEncoder
 from typing import (Any, Iterable, List, Type, Union)
 from flask import current_app, request, g
 from .config import config
-from ..flask_jwt_simple_cookie_auth import (get_jwt_identity, get_jwt, set_access_cookies, set_refresh_cookies,
-                                            verify_jwt_in_request, decode_token, unset_jwt_cookies)
+from .utils import get_jwt_identity, get_jwt,set_access_cookies, set_refresh_cookies, decode_token, unset_jwt_cookies
 from jwt import ExpiredSignatureError
 
 from .exceptions import (CSRFError, JWTDecodeError)
