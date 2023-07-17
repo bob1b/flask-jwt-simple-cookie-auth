@@ -7,6 +7,7 @@ from jwt import ExpiredSignatureError
 from datetime import (datetime, timedelta, timezone)
 from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
 
+from . import jwt_manager
 from .config import config
 from .user import _load_user
 from .typing import (ExpiresDelta, Fresh)
@@ -44,10 +45,9 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
         :return:
             Dictionary containing the payload of the JWT decoded JWT.
     """
-    from .jwt_manager import get_jwt_manager
 
-    jwt_manager = get_jwt_manager()
-    return jwt_manager.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
+    jwt_man = jwt_manager.get_jwt_manager()
+    return jwt_man.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
 def _encode_jwt(
@@ -318,18 +318,14 @@ def verify_token_type(decoded_token: dict, refresh: bool) -> None:
 
 
 def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
-    from .jwt_manager import get_jwt_manager
-
-    jwt_manager = get_jwt_manager()
-    if jwt_manager.token_in_blocklist_callback(jwt_header, jwt_data):
+    jwt_man = jwt_manager.get_jwt_manager()
+    if jwt_man.token_in_blocklist_callback(jwt_header, jwt_data):
         raise RevokedTokenError(jwt_header, jwt_data)
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
-    from .jwt_manager import get_jwt_manager
-
-    jwt_manager = get_jwt_manager()
-    if not jwt_manager.token_verification_callback(jwt_header, jwt_data):
+    jwt_man = jwt_manager.get_jwt_manager()
+    if not jwt_man.token_verification_callback(jwt_header, jwt_data):
         error_msg = "User claims verification failed"
         raise UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
 
@@ -422,8 +418,8 @@ def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Opti
         :return:
             An encoded access token
     """
-    jwt_manager = get_jwt_manager()
-    return jwt_manager.encode_jwt_from_config(
+    jwt_man = jwt_manager.get_jwt_manager()
+    return jwt_man.encode_jwt_from_config(
         claims=additional_claims,
         expires_delta=expires_delta,
         fresh=fresh,
@@ -462,10 +458,8 @@ def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = 
         :return:
             An encoded refresh token
     """
-    from .jwt_manager import get_jwt_manager
-
-    jwt_manager = get_jwt_manager()
-    return jwt_manager.encode_jwt_from_config(
+    jwt_man = jwt_manager.get_jwt_manager()
+    return jwt_man.encode_jwt_from_config(
         claims=additional_claims,
         expires_delta=expires_delta,
         fresh=False,

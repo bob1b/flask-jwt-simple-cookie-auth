@@ -1,9 +1,7 @@
 import logging
+from typing import Optional
 from flask import (Response, Request, request)
-
 from .config import config
-
-from typing import (Any, Optional)
 
 _logger = logging.getLogger(__name__)
 

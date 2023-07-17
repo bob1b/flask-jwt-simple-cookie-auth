@@ -13,7 +13,6 @@ __version__ = "b4.5.2"  # modified by bob1b
 # TODO - is a user logged in or not? return user_id or None
 # TODO - JWT parsing utils
 # TODO - token creation utils
-# TODO - auto token refreshing before request is processed
 # TODO - log in / log out
 # TODO - token expiration config
 # .. what else?
