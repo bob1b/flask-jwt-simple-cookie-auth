@@ -1,6 +1,6 @@
 from datetime import (datetime, timedelta, timezone)
 from json import JSONEncoder
-from typing import (Iterable, List, Optional, Sequence, Type, Union)
+from typing import (Iterable, List, Optional, Type, Union)
 
 from flask import current_app
 from jwt.algorithms import requires_cryptography

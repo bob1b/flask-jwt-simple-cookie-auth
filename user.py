@@ -1,5 +1,6 @@
 from datetime import timedelta
 from flask import g
+from typing import (Any, Type, TYPE_CHECKING)
 
 
 def login(user, request):
@@ -7,6 +8,7 @@ def login(user, request):
     g.new_access_token = user.create_access_token(request=request, fresh=timedelta(minutes=15))
     g.new_refresh_token = user.create_refresh_token()
     # TODO
+
 
 def logout_user(user, response=None, logout_all_sessions=False):
     method = f'logout_user({user.id}, response={response}, logout_all_sessions={logout_all_sessions})'
@@ -46,7 +48,8 @@ def logout_user(user, response=None, logout_all_sessions=False):
 
         g.unset_tokens = True
 
-def remove_expired_tokens(user):
+
+def remove_user_expired_tokens(user):
     """
         Remove expired tokens for this user. Even though Access Tokens expire relatively quickly compared to
           Refresh Tokens, only consider tokens to be expired if they are older than the Refresh Token expiration.
@@ -71,7 +74,8 @@ def remove_expired_tokens(user):
     _logger.info(f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' +
                  'refresh tokens')
 
-def create_access_token(self, request=None, fresh=False, expires_delta=timedelta(minutes=15), replace=None):
+
+def create_user_access_token(self, request=None, fresh=False, expires_delta=timedelta(minutes=15), replace=None):
     method = f"User.create_access_token({self})"
 
     user_agent = None
@@ -91,9 +95,62 @@ def create_access_token(self, request=None, fresh=False, expires_delta=timedelta
     db.session.commit()
     return access_token
 
-def create_refresh_token(self, expires_delta=timedelta(weeks=2)):
+
+def create_user_refresh_token(self, expires_delta=timedelta(weeks=2)):
     refresh_token = jwt2.create_refresh_token(identity=self.id)
     refresh_token_obj = models.RefreshToken(token=refresh_token, user_id=self.id)
     db.session.add(refresh_token_obj)
     db.session.commit()
     return refresh_token
+
+
+def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
+    if not has_user_lookup():
+        return None
+
+    identity = jwt_data[config.identity_claim_key]
+    user = user_lookup(jwt_header, jwt_data)
+    if user is None:
+        error_msg = f"user_lookup returned None for {identity}"
+        raise UserLookupError(error_msg, jwt_header, jwt_data)
+    return {"loaded_user": user}
+
+
+def has_user_lookup() -> bool:
+    jwt_manager = get_jwt_manager()
+    return jwt_manager.user_lookup_callback is not None
+
+
+def user_lookup(*args, **kwargs) -> Any:
+    jwt_manager = get_jwt_manager()
+    return jwt_manager.user_lookup_callback and jwt_manager.user_lookup_callback(*args, **kwargs)
+
+
+def get_current_user() -> Any:
+    """
+        In a protected endpoint, this will return the user object for the JWT that is accessing the endpoint.
+
+        This is only usable if :meth:`~flask_jwt_extended.JWTManager.user_lookup_loader` is configured. If the user
+        loader callback is not being used, this will raise an error.
+
+        If no JWT is present due to ``jwt_sca(optional=True)``, ``None`` is returned.
+
+        :return:
+            The current user object for the JWT in the current request
+    """
+
+    get_jwt()  # Raise an error if not in a decorated context
+
+    # tokens had expired at beginning of this request
+    if hasattr(g, 'unset_tokens') and g.unset_tokens:
+        _logger.info('current_user(): got g.unset_tokens, returning no-user')
+        return None
+
+    jwt_user_dict = g.get("_jwt_extended_jwt_user", None)
+    if jwt_user_dict is None:
+        raise RuntimeError("You must provide a `@jwt.user_lookup_loader` callback to use this method")
+    return jwt_user_dict["loaded_user"]
+
+
+def current_user_context_processor() -> Any:
+    return {"current_user": get_current_user()}
