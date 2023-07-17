@@ -1,12 +1,9 @@
 import logging
-from flask import (g, Response, Request, request)
-from werkzeug.local import LocalProxy
-from .user import get_current_user
-from .config import config
-from typing import (Any, Optional)
+from flask import (Response, Request, request)
 
-# Proxy to access the current user
-current_user: Any = LocalProxy(lambda: get_current_user())
+from .config import config
+
+from typing import (Any, Optional)
 
 _logger = logging.getLogger(__name__)
 

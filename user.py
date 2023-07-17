@@ -1,11 +1,15 @@
-from datetime import timedelta
 from flask import g
-from typing import (Any, Optional, Type, TYPE_CHECKING)
-from .utils import (get_access_cookie_value, get_refresh_cookie_value)
+from datetime import timedelta
+from typing import (Any, Optional)
+from werkzeug.local import LocalProxy
+
 from .config import config
-from .tokens import (create_refresh_token, get_jwt)
 from .exceptions import UserLookupError
-from .jwt_manager import get_jwt_manager
+from .utils import (get_access_cookie_value, get_refresh_cookie_value)
+
+
+# Proxy to access the current user
+current_user: Any = LocalProxy(lambda: get_current_user())
 
 
 def login(user, request):
@@ -102,6 +106,8 @@ def create_user_access_token(self, request=None, fresh=False, expires_delta=time
 
 
 def create_user_refresh_token(self, expires_delta=timedelta(weeks=2)):
+    from .tokens import (create_refresh_token)
+
     refresh_token = create_refresh_token(identity=self.id)
     refresh_token_obj = models.RefreshToken(token=refresh_token, user_id=self.id)  # TODO
     db.session.add(refresh_token_obj)
@@ -122,11 +128,15 @@ def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
 
 
 def has_user_lookup() -> bool:
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     return jwt_manager.user_lookup_callback is not None
 
 
 def user_lookup(*args, **kwargs) -> Any:
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     return jwt_manager.user_lookup_callback and jwt_manager.user_lookup_callback(*args, **kwargs)
 
@@ -143,6 +153,7 @@ def get_current_user() -> Any:
         :return:
             The current user object for the JWT in the current request
     """
+    from .tokens import get_jwt
 
     get_jwt()  # Raise an error if not in a decorated context
 

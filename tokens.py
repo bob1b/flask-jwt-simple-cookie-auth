@@ -1,18 +1,18 @@
 import jwt
 import uuid
-from datetime import (datetime, timedelta, timezone)
-from hmac import compare_digest
 from json import JSONEncoder
-from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
 from flask import (request, g)
-from .config import config
-from .jwt_manager import get_jwt_manager
+from hmac import compare_digest
 from jwt import ExpiredSignatureError
+from datetime import (datetime, timedelta, timezone)
+from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
+
+from .config import config
 from .user import _load_user
+from .typing import (ExpiresDelta, Fresh)
 from .utils import (set_access_cookies, set_refresh_cookies, unset_jwt_cookies)
 from .exceptions import (CSRFError, FreshTokenRequired, JWTDecodeError, NoAuthorizationError, RevokedTokenError,
                          UserClaimsVerificationError,  WrongTokenError)
-from .typing import (ExpiresDelta, Fresh)
 
 # TODO - logger/logging
 
@@ -44,6 +44,8 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
         :return:
             Dictionary containing the payload of the JWT decoded JWT.
     """
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     return jwt_manager.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
@@ -316,12 +318,16 @@ def verify_token_type(decoded_token: dict, refresh: bool) -> None:
 
 
 def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     if jwt_manager.token_in_blocklist_callback(jwt_header, jwt_data):
         raise RevokedTokenError(jwt_header, jwt_data)
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     if not jwt_manager.token_verification_callback(jwt_header, jwt_data):
         error_msg = "User claims verification failed"
@@ -456,6 +462,8 @@ def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = 
         :return:
             An encoded refresh token
     """
+    from .jwt_manager import get_jwt_manager
+
     jwt_manager = get_jwt_manager()
     return jwt_manager.encode_jwt_from_config(
         claims=additional_claims,
