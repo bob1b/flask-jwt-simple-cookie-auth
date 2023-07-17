@@ -17,40 +17,41 @@ _logger = logging.getLogger(__name__)
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 
-def login(user_obj):
+def login_user(user_obj, access_token_model=None, refresh_token_model=None, db=None):
     # create cookies and save in 'g' so they will be applied to the response
-    g.new_access_token = create_user_access_token(user_obj)
-    g.new_refresh_token = create_user_refresh_token(user_obj)
-    remove_user_expired_tokens(user_obj)
+    g.new_access_token = create_user_access_token(user_obj, access_token_model=access_token_model, db=db)
+    g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_model=refresh_token_model, db=db)
+    remove_user_expired_tokens(user_obj, access_token_model=access_token_model, refresh_token_model=refresh_token_model,
+                               db=db)
 
 
-def logout_user(user, response=None, logout_all_sessions=False):
-    method = f'logout_user({user.id}, response={response}, logout_all_sessions={logout_all_sessions})'
+def logout_user(user_obj, access_token_model=None, refresh_token_model=None, logout_all_sessions=False, db=None):
+    method = f'logout_user({user_obj.id}, logout_all_sessions={logout_all_sessions})'
 
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
         tokens = []
 
         access_cookie_value = utils.get_access_cookie_value()
         if not access_cookie_value:
-            _logger.warning(f'{method}: no access_cookie_value for user #{user.id}, cannot invalidate access token')
+            _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_tokens = models.AccessToken.query.filter_by(user_id=user.id, token=access_cookie_value).all()  # TODO
+            found_tokens = access_token_model.query.filter_by(user_id=user_obj.id, token=access_cookie_value).all()  # TODO
             if not found_tokens:
                 _logger.warning(f'{method}: no AccessToken(s) found for cookie value "{access_cookie_value}", ' +
-                                f'user #{user.id}')
+                                f'user #{user_obj.id}')
             else:
                 tokens = tokens + found_tokens
 
         refresh_cookie_value = utils.get_refresh_cookie_value()
         if not refresh_cookie_value:
             _logger.warning(
-                f'{method}: no refresh_cookie_value for user #{user.id}, cannot invalidate access token')
+                f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_tokens = models.RefreshToken.query.filter_by(  # TODO
-                user_id=user.id, token=refresh_cookie_value).all()
+            found_tokens = refresh_token_model.query.filter_by(  # TODO
+                user_id=user_obj.id, token=refresh_cookie_value).all()
             if not found_tokens:
                 _logger.warning(
-                    f'{method}: no RefreshToken(s) found for cookie value "{refresh_cookie_value}", user #{user.id}')
+                    f'{method}: no RefreshToken(s) found for cookie value "{refresh_cookie_value}", user #{user_obj.id}')
             else:
                 tokens = tokens + found_tokens
 
@@ -62,7 +63,7 @@ def logout_user(user, response=None, logout_all_sessions=False):
         g.unset_tokens = True
 
 
-def remove_user_expired_tokens(user):
+def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_model=None, db=None):
     """
         Remove expired tokens for this user. Even though Access Tokens expire relatively quickly compared to
           Refresh Tokens, only consider tokens to be expired if they are older than the Refresh Token expiration.
@@ -70,15 +71,15 @@ def remove_user_expired_tokens(user):
         Otherwise, we might end up deleting still in-use Access Tokens if the user has multiple sessions of the same
           login across multiple devices
     """
-    method = f'remove_expired_tokens(user #{user.id} ({user.email}))'
+    method = f'remove_expired_tokens(user #{user_obj.id} ({user_obj.email}))'
     removed_access_count = 0
     removed_refresh_count = 0
-    user_tokens = models.AccessToken.query.filter_by(user_id=user.id).all() + \
-                  models.RefreshToken.query.filter_by(user_id=user.id).all()
+    user_tokens = access_token_model.query.filter_by(user_id=user_obj.id).all() + \
+                  refresh_token_model.query.filter_by(user_id=user_obj.id).all()
     for token in user_tokens:
-        expires_in_seconds = token.expires_in_seconds(use_refresh_expiration_delta=True)
+        expires_in_seconds = tokens.expires_in_seconds(token, use_refresh_expiration_delta=True)
         if int(expires_in_seconds) < 0:
-            if type(token) == models.AccessToken:
+            if type(token) == access_token_model:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
                 removed_refresh_count = removed_refresh_count + 1
@@ -88,7 +89,12 @@ def remove_user_expired_tokens(user):
                  'refresh tokens')
 
 
-def create_user_access_token(user_obj, fresh=False, expires_delta=timedelta(minutes=15), replace=None):
+def create_user_access_token(user_obj,
+                             fresh=False,
+                             expires_delta=timedelta(minutes=15),
+                             replace=None,
+                             access_token_model=None,
+                             db=None):
     method = f"User.create_access_token({user_obj})"
 
     user_agent = None
@@ -99,19 +105,19 @@ def create_user_access_token(user_obj, fresh=False, expires_delta=timedelta(minu
     # create_access_token(request=request, fresh=timedelta(minutes=15))
     _logger.info(f"{method}: Created new access_token = {access_token}")
 
-    if replace and type(replace) == models.AccessToken:
+    if replace and type(replace) == access_token_model:
         replace.token = access_token
         replace.user_agent = user_agent
     else:
-        access_token_obj = models.AccessToken(token=access_token, user_id=user_obj.id, user_agent=user_agent)
+        access_token_obj = access_token_model(token=access_token, user_id=user_obj.id, user_agent=user_agent)
         db.session.add(access_token_obj)
     db.session.commit()
     return access_token
 
 
-def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2)):
+def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refresh_token_model=None, db=None):
     refresh_token = tokens.create_refresh_token(identity=user_obj.id)
-    refresh_token_obj = models.RefreshToken(token=refresh_token, user_id=user_obj.id)  # TODO
+    refresh_token_obj = refresh_token_model(token=refresh_token, user_id=user_obj.id)  # TODO
     db.session.add(refresh_token_obj)
     db.session.commit()
     return refresh_token

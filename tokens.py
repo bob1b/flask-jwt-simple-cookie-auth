@@ -1,5 +1,6 @@
 import jwt
 import uuid
+import logging
 from json import JSONEncoder
 from flask import (request, g)
 from hmac import compare_digest
@@ -7,22 +8,30 @@ from jwt import ExpiredSignatureError
 from datetime import (datetime, timedelta, timezone)
 from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
 
+from . import user
+from . import exceptions
 from . import jwt_manager
 from .config import config
-from .user import _load_user
 from .typing import (ExpiresDelta, Fresh)
 from .utils import (set_access_cookies, set_refresh_cookies, unset_jwt_cookies)
-from .exceptions import (CSRFError, FreshTokenRequired, JWTDecodeError, NoAuthorizationError, RevokedTokenError,
-                         UserClaimsVerificationError,  WrongTokenError)
 
-# TODO - logger/logging
+_logger = logging.getLogger(__name__)
 
-def expires_in_seconds(self, use_refresh_expiration_delta=False):
-    token_data = decode_token(self.token, allow_expired=True)
+
+def find_access_token_by_string(encrypted_token, user_id):
+    return AccessToken.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+
+
+def find_refresh_token_by_string(encrypted_token, user_id):
+    return RefreshToken.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+
+
+def expires_in_seconds(token_obj, use_refresh_expiration_delta=False):
+    token_data = decode_token(token_obj.token, allow_expired=True)
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
-    if use_refresh_expiration_delta and type(self) == AccessToken: # TODO
-        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
+    # if use_refresh_expiration_delta and type(self) == AccessToken: # TODO
+    #     expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
     return expires_in
 
 def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False) -> dict:
@@ -50,22 +59,20 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
     return jwt_man.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
-def _encode_jwt(
-    algorithm: str,
-    audience: Union[str, Iterable[str]],
-    claim_overrides: dict,
-    csrf: bool,
-    expires_delta: ExpiresDelta,
-    fresh: Fresh,
-    header_overrides: dict,
-    identity: Any,
-    identity_claim_key: str,
-    issuer: str,
-    json_encoder: Type[JSONEncoder],
-    secret: str,
-    token_type: str,
-    nbf: bool,
-) -> str:
+def _encode_jwt(algorithm: str,
+                audience: Union[str, Iterable[str]],
+                claim_overrides: dict,
+                csrf: bool,
+                expires_delta: ExpiresDelta,
+                fresh: Fresh,
+                header_overrides: dict,
+                identity: Any,
+                identity_claim_key: str,
+                issuer: str,
+                json_encoder: Type[JSONEncoder],
+                secret: str,
+                token_type: str,
+                nbf: bool) -> str:
     now = datetime.now(timezone.utc)
 
     if isinstance(fresh, timedelta):
@@ -100,18 +107,16 @@ def _encode_jwt(
     return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
 
 
-def _decode_jwt(
-    algorithms: List,
-    allow_expired: bool,
-    audience: Union[str, Iterable[str]],
-    csrf_value: str,
-    encoded_token: str,
-    identity_claim_key: str,
-    issuer: str,
-    leeway: int,
-    secret: str,
-    verify_aud: bool,
-) -> dict:
+def _decode_jwt(algorithms: List,
+                allow_expired: bool,
+                audience: Union[str, Iterable[str]],
+                csrf_value: str,
+                encoded_token: str,
+                identity_claim_key: str,
+                issuer: str,
+                leeway: int,
+                secret: str,
+                verify_aud: bool) -> dict:
     options = {"verify_aud": verify_aud}
     if allow_expired:
         options["verify_exp"] = False
@@ -124,7 +129,7 @@ def _decode_jwt(
 
     # Make sure that any custom claims we expect in the token are present
     if identity_claim_key not in decoded_token:
-        raise JWTDecodeError("Missing claim: {}".format(identity_claim_key))
+        raise exceptions.JWTDecodeError("Missing claim: {}".format(identity_claim_key))
 
     if "type" not in decoded_token:
         decoded_token["type"] = "access"
@@ -137,9 +142,9 @@ def _decode_jwt(
 
     if csrf_value:
         if "csrf" not in decoded_token:
-            raise JWTDecodeError("Missing claim: csrf")
+            raise exceptions.JWTDecodeError("Missing claim: csrf")
         if not compare_digest(decoded_token["csrf"], csrf_value):
-            raise CSRFError("CSRF double submit tokens do not match")
+            raise exceptions.CSRFError("CSRF double submit tokens do not match")
 
     return decoded_token
 
@@ -189,13 +194,13 @@ def refresh_expiring_jwts():
         return
 
     # found unexpired access token - no need to refresh
-    if access_token and access_token.expires_in_seconds() > 0:
+    if access_token and expires_in_seconds(access_token) > 0:
         return
 
     # access token has expired
     expired_access_token = access_token
-    access_token_expires_in_seconds = expired_access_token.expires_in_seconds()
-    refresh_token_expires_in_seconds = refresh_token.expires_in_seconds()
+    access_token_expires_in_seconds = expires_in_seconds(expired_access_token)
+    refresh_token_expires_in_seconds = expires_in_seconds(refresh_token)
 
     # catch instances when we cannot refresh the access token
     if not expired_access_token or not refresh_token or refresh_token_expires_in_seconds < 0:
@@ -249,7 +254,7 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     # access token was refreshed
 
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
-        raise NoAuthorizationError(f'Missing cookie <all unset>')
+        raise exceptions.NoAuthorizationError(f'Missing cookie <all unset>')
 
     if not refresh: # access token
         cookie_key = config.access_cookie_name
@@ -265,12 +270,12 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
             encoded_token = request.cookies.get(cookie_key)
 
     if not encoded_token:
-        raise NoAuthorizationError(f'Missing cookie "{cookie_key}"')
+        raise exceptions.NoAuthorizationError(f'Missing cookie "{cookie_key}"')
 
     if config.csrf_protect and request.method in config.csrf_request_methods:
         csrf_value = request.cookies.get(config.access_csrf_cookie_name)
         if not csrf_value:
-            raise CSRFError("Missing CSRF token")
+            raise exceptions.CSRFError("Missing CSRF token")
     else:
         csrf_value = None
 
@@ -287,13 +292,13 @@ def _decode_jwt_from_request(
         encoded_token, csrf_token = _decode_jwt_from_cookies(refresh) # this method checks flask.g before actual cookies
         decoded_token = decode_token(encoded_token, csrf_token)
         jwt_header = get_unverified_jwt_headers(encoded_token)
-    except NoAuthorizationError as e:
+    except exceptions.NoAuthorizationError as e:
         jwt_header = False
         errors.append(str(e))
 
     if not decoded_token:
         err_msg = f"Missing JWT in cookies ({'; '.join(errors)})"
-        raise NoAuthorizationError(err_msg)
+        raise exceptions.NoAuthorizationError(err_msg)
 
     # Additional verifications provided by this extension
     if verify_type:
@@ -312,22 +317,22 @@ def _decode_jwt_from_request(
 
 def verify_token_type(decoded_token: dict, refresh: bool) -> None:
     if not refresh and decoded_token["type"] == "refresh":
-        raise WrongTokenError("Only non-refresh tokens are allowed")
+        raise exceptions.WrongTokenError("Only non-refresh tokens are allowed")
     elif refresh and decoded_token["type"] != "refresh":
-        raise WrongTokenError("Only refresh tokens are allowed")
+        raise exceptions.WrongTokenError("Only refresh tokens are allowed")
 
 
 def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
     jwt_man = jwt_manager.get_jwt_manager()
     if jwt_man.token_in_blocklist_callback(jwt_header, jwt_data):
-        raise RevokedTokenError(jwt_header, jwt_data)
+        raise exceptions.RevokedTokenError(jwt_header, jwt_data)
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
     jwt_man = jwt_manager.get_jwt_manager()
     if not jwt_man.token_verification_callback(jwt_header, jwt_data):
         error_msg = "User claims verification failed"
-        raise UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
+        raise exceptions.UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
 
 
 def get_jwt() -> dict:
@@ -512,11 +517,11 @@ def _verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
     fresh = jwt_data["fresh"]
     if isinstance(fresh, bool):
         if not fresh:
-            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
+            raise exceptions.FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
     else:
         now = datetime.timestamp(datetime.now(timezone.utc))
         if fresh < now:
-            raise FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
+            raise exceptions.FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
 
 
 def verify_jwt_in_request(
@@ -569,8 +574,8 @@ def verify_jwt_in_request(
         )
         refresh_expiring_jwts()
 
-    except (NoAuthorizationError, ExpiredSignatureError) as e:
-        if type(e) == NoAuthorizationError and not optional:
+    except (exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
+        if type(e) == exceptions.NoAuthorizationError and not optional:
             raise
         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
             raise
@@ -581,7 +586,7 @@ def verify_jwt_in_request(
 
     # Save these at the very end so that they are only saved in the request
     # context if the token is valid and all callbacks succeed
-    g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
+    g._jwt_extended_jwt_user = user._load_user(jwt_header, jwt_data)
     g._jwt_extended_jwt_header = jwt_header
     g._jwt_extended_jwt = jwt_data
 

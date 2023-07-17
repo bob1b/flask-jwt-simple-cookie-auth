@@ -5,18 +5,12 @@ from flask import Flask, current_app
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
                  MissingRequiredClaimError)
 
+from . import user
+from . import tokens
+from . import exceptions
+from . import default_callbacks
 from .config import config
-from .default_callbacks import (
-    default_additional_claims_callback, default_blocklist_callback, default_decode_key_callback,
-    default_encode_key_callback, default_expired_token_callback, default_invalid_token_callback,
-    default_jwt_headers_callback, default_needs_fresh_token_callback, default_revoked_token_callback,
-    default_token_verification_callback, default_token_verification_failed_callback, default_unauthorized_callback,
-    default_user_identity_callback, default_user_lookup_error_callback)
-from .exceptions import (CSRFError, FreshTokenRequired, JWTDecodeError, NoAuthorizationError, RevokedTokenError,
-                         UserClaimsVerificationError, UserLookupError, WrongTokenError)
-from .tokens import (_decode_jwt, _encode_jwt)
 from .typing import (ExpiresDelta, Fresh)
-from .user import current_user_context_processor
 
 
 def get_jwt_manager() -> "JWTManager":
@@ -45,23 +39,21 @@ class JWTManager(object):
                 Jinja templates). Defaults to ``False``. """
         # Register the default error handler callback methods. These can be
         # overridden with the appropriate loader decorators
-        self._decode_key_callback = default_decode_key_callback
-        self._encode_key_callback = default_encode_key_callback
-        self._expired_token_callback = default_expired_token_callback
-        self._invalid_token_callback = default_invalid_token_callback
-        self._jwt_additional_header_callback = default_jwt_headers_callback
-        self._needs_fresh_token_callback = default_needs_fresh_token_callback
-        self._revoked_token_callback = default_revoked_token_callback
-        self.token_in_blocklist_callback = default_blocklist_callback
-        self.token_verification_callback = default_token_verification_callback
-        self._unauthorized_callback = default_unauthorized_callback
-        self._user_claims_callback = default_additional_claims_callback
-        self._user_identity_callback = default_user_identity_callback
         self.user_lookup_callback: Optional[Callable] = None
-        self._user_lookup_error_callback = default_user_lookup_error_callback
-        self._token_verification_failed_callback = (
-            default_token_verification_failed_callback
-        )
+        self._decode_key_callback = default_callbacks.default_decode_key_callback
+        self._encode_key_callback = default_callbacks.default_encode_key_callback
+        self._unauthorized_callback = default_callbacks.default_unauthorized_callback
+        self._expired_token_callback = default_callbacks.default_expired_token_callback
+        self._invalid_token_callback = default_callbacks.default_invalid_token_callback
+        self._revoked_token_callback = default_callbacks.default_revoked_token_callback
+        self.token_in_blocklist_callback = default_callbacks.default_blocklist_callback
+        self._user_identity_callback = default_callbacks.default_user_identity_callback
+        self._user_claims_callback = default_callbacks.default_additional_claims_callback
+        self._jwt_additional_header_callback = default_callbacks.default_jwt_headers_callback
+        self._user_lookup_error_callback = default_callbacks.default_user_lookup_error_callback
+        self._needs_fresh_token_callback = default_callbacks.default_needs_fresh_token_callback
+        self.token_verification_callback = default_callbacks.default_token_verification_callback
+        self._token_verification_failed_callback = default_callbacks.default_token_verification_failed_callback
 
         # Register this extension with the flask app now (if it is provided)
         if app is not None:
@@ -81,14 +73,14 @@ class JWTManager(object):
         app.extensions["flask-jwt-simple-cookie-auth"] = self
 
         if add_context_processor:
-            app.context_processor(current_user_context_processor)
+            app.context_processor(user.current_user_context_processor)
 
         # Set all the default configurations for this extension
         self._set_default_configuration_options(app)
         self._set_error_handler_callbacks(app)
 
     def _set_error_handler_callbacks(self, app: Flask) -> None:
-        @app.errorhandler(CSRFError)
+        @app.errorhandler(exceptions.CSRFError)
         def handle_csrf_error(e):
             return self._unauthorized_callback(str(e))
 
@@ -100,7 +92,7 @@ class JWTManager(object):
         def handle_expired_error(e):
             return self._expired_token_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(FreshTokenRequired)
+        @app.errorhandler(exceptions.FreshTokenRequired)
         def handle_fresh_token_required(e):
             return self._needs_fresh_token_callback(e.jwt_header, e.jwt_data)
 
@@ -120,27 +112,27 @@ class JWTManager(object):
         def handle_invalid_token_error(e):
             return self._invalid_token_callback(str(e))
 
-        @app.errorhandler(JWTDecodeError)
+        @app.errorhandler(exceptions.JWTDecodeError)
         def handle_jwt_decode_error(e):
             return self._invalid_token_callback(str(e))
 
-        @app.errorhandler(NoAuthorizationError)
+        @app.errorhandler(exceptions.NoAuthorizationError)
         def handle_auth_error(e):
             return self._unauthorized_callback(str(e))
 
-        @app.errorhandler(RevokedTokenError)
+        @app.errorhandler(exceptions.RevokedTokenError)
         def handle_revoked_token_error(e):
             return self._revoked_token_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(UserClaimsVerificationError)
+        @app.errorhandler(exceptions.UserClaimsVerificationError)
         def handle_failed_token_verification(e):
             return self._token_verification_failed_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(UserLookupError)
+        @app.errorhandler(exceptions.UserLookupError)
         def handler_user_lookup_error(e):
             return self._user_lookup_error_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(WrongTokenError)
+        @app.errorhandler(exceptions.WrongTokenError)
         def handle_wrong_token_error(e):
             return self._invalid_token_callback(str(e))
 
@@ -401,7 +393,7 @@ class JWTManager(object):
             else:
                 expires_delta = config.refresh_expires
 
-        return _encode_jwt(
+        return tokens._encode_jwt(
             algorithm=config.algorithm,
             audience=config.encode_audience,
             claim_overrides=claim_overrides,
@@ -440,11 +432,11 @@ class JWTManager(object):
         }
 
         try:
-            return _decode_jwt(**kwargs, allow_expired=allow_expired)
+            return tokens._decode_jwt(**kwargs, allow_expired=allow_expired)
         except ExpiredSignatureError as e:
             # TODO: If we ever do another breaking change, don't raise this pyjwt error directly, instead raise a custom
             #  error of ours from this error.
             e.jwt_header = unverified_headers  # type: ignore
-            e.jwt_data = _decode_jwt(**kwargs, allow_expired=True)  # type: ignore
+            e.jwt_data = tokens._decode_jwt(**kwargs, allow_expired=True)  # type: ignore
             if not allow_expired:
                 raise
