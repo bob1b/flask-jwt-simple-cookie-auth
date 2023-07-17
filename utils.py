@@ -1,61 +1,14 @@
-import jwt
-from datetime import (datetime, timezone)
 import logging
-from typing import (Any, Optional)
 from flask import (g, Response, Request, request)
 from werkzeug.local import LocalProxy
-from .exceptions import FreshTokenRequired
+from .user import get_current_user
 from .config import config
-from .internal_utils import get_jwt_manager
-from .typing import (ExpiresDelta, Fresh)
-from typing import (Any, Optional, Sequence, Tuple, Union)
+from typing import (Any, Optional)
 
 # Proxy to access the current user
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 _logger = logging.getLogger(__name__)
-
-
-
-# def set_current_user_from_token_string(access_token_string=False):
-#     try:
-#         # jwt_manager = get_jwt_manager()
-#         jwt_dict = _decode_jwt(encoded_token=access_token_string)
-#     except (NoAuthorizationError, ExpiredSignatureError) as e:
-#         if type(e) == NoAuthorizationError and not optional:
-#             raise
-#         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-#             raise
-#         g._jwt_extended_jwt = {}
-#         g._jwt_extended_jwt_header = {}
-#         g._jwt_extended_jwt_user = {"loaded_user": None}
-#         return None
-#
-#     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
-#     g._jwt_extended_jwt_header = jwt_header
-#     g._jwt_extended_jwt = jwt_data
-def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False) -> dict:
-    """
-        Returns the decoded token (python dict) from an encoded JWT. This does all the checks to ensure that the decoded
-        token is valid before returning it.
-
-        This will not fire the user loader callbacks, save the token for access in protected endpoints, checked if a
-        token is revoked, etc. This is purely used to ensure that a JWT is valid.
-
-        :param encoded_token:
-            The encoded JWT to decode.
-
-        :param csrf_value:
-            Expected CSRF double submit value (optional).
-
-        :param allow_expired:
-            If ``True``, do not raise an error if the JWT is expired.  Defaults to ``False``
-
-        :return:
-            Dictionary containing the payload of the JWT decoded JWT.
-    """
-    jwt_manager = get_jwt_manager()
-    return jwt_manager.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
 def get_access_cookie_value(req: Request = None) -> dict or None:

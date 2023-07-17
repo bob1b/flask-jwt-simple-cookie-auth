@@ -1,15 +1,7 @@
 from functools import wraps
-from flask import (current_app, g, request)
-
-from .config import config
-from jwt import ExpiredSignatureError
-from .tokens import refresh_expiring_jwts, after_request
-from .exceptions import (CSRFError, FreshTokenRequired, NoAuthorizationError, UserLookupError)
-from .internal_utils import (custom_verification_for_token, has_user_lookup, user_lookup, verify_token_not_blocklisted,
-                             verify_token_type)
-from .utils import (decode_token, get_unverified_jwt_headers, _verify_token_is_fresh, verify_jwt_in_request)
-
-from typing import (Any, Optional, Tuple)
+from flask import (current_app)
+from typing import Any
+from .tokens import (verify_jwt_in_request, after_request)
 
 
 def jwt_sca(optional: bool = False, fresh: bool = False, refresh: bool = False, verify_type: bool = True,

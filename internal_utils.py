@@ -13,19 +13,6 @@ except ModuleNotFoundError:  # pragma: no cover
     HAS_JSON_PROVIDER = False
 
 
-if TYPE_CHECKING:  # pragma: no cover
-    from . import JWTManager
-
-
-def get_jwt_manager() -> "JWTManager":
-    try:
-        return current_app.extensions["flask-jwt-simple-cookie-auth"]
-    except KeyError:  # pragma: no cover
-        raise RuntimeError(
-            "You must initialize a JWTManager with this flask application before using this method"
-        ) from None
-
-
 class JSONEncoder(json.JSONEncoder):
     """A JSON encoder which uses the app.json_provider_class for the default"""
 

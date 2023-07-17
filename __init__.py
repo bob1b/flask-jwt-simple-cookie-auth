@@ -4,7 +4,7 @@ from .utils import *
 #                     get_current_user, get_jti, get_jwt, get_jwt_header, get_jwt_identity, get_unverified_jwt_headers,
 #                     set_access_cookies, set_refresh_cookies, unset_access_cookies, unset_jwt_cookies,
 #                     unset_refresh_cookies, get_access_cookie_value, get_refresh_cookie_value)
-from .view_decorators import jwt_sca, verify_jwt_in_request
+from .view_decorators import jwt_sca
 
 __version__ = "b4.5.2"  # modified by bob1b
 

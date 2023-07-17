@@ -3,23 +3,49 @@ import uuid
 from datetime import (datetime, timedelta, timezone)
 from hmac import compare_digest
 from json import JSONEncoder
-from typing import (Any, Iterable, List, Type, Union)
-from flask import current_app, request, g
+from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
+from flask import (request, g)
 from .config import config
-from .utils import get_jwt_identity, get_jwt,set_access_cookies, set_refresh_cookies, decode_token, unset_jwt_cookies
+from .jwt_manager import get_jwt_manager
 from jwt import ExpiredSignatureError
-
-from .exceptions import (CSRFError, JWTDecodeError)
+from .user import _load_user
+from .utils import (set_access_cookies, set_refresh_cookies, unset_jwt_cookies)
+from .exceptions import (CSRFError, FreshTokenRequired, JWTDecodeError, NoAuthorizationError, RevokedTokenError,
+                         UserClaimsVerificationError,  WrongTokenError)
 from .typing import (ExpiresDelta, Fresh)
 
+# TODO - logger/logging
 
 def expires_in_seconds(self, use_refresh_expiration_delta=False):
     token_data = decode_token(self.token, allow_expired=True)
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
-    if use_refresh_expiration_delta and type(self) == AccessToken:
+    if use_refresh_expiration_delta and type(self) == AccessToken: # TODO
         expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
     return expires_in
+
+def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False) -> dict:
+    """
+        Returns the decoded token (python dict) from an encoded JWT. This does all the checks to ensure that the decoded
+        token is valid before returning it.
+
+        This will not fire the user loader callbacks, save the token for access in protected endpoints, checked if a
+        token is revoked, etc. This is purely used to ensure that a JWT is valid.
+
+        :param encoded_token:
+            The encoded JWT to decode.
+
+        :param csrf_value:
+            Expected CSRF double submit value (optional).
+
+        :param allow_expired:
+            If ``True``, do not raise an error if the JWT is expired.  Defaults to ``False``
+
+        :return:
+            Dictionary containing the payload of the JWT decoded JWT.
+    """
+    jwt_manager = get_jwt_manager()
+    return jwt_manager.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
 def _encode_jwt(
@@ -118,6 +144,7 @@ def _decode_jwt(
 
 def access_token_has_expired():
     # TODO - probably will need to use jwt to check expiration, look for code raising ExpiredSignatureError
+    # TODO - FILL THIS IN
     pass
 
 
@@ -133,7 +160,7 @@ def refresh_expiring_jwts():
     enc_refresh_token = request.cookies.get('refresh_token_cookie')
     csrf_token = request.cookies.get('csrf_access_token')
 
-    if jwt2.access_token_has_expired(): # TODO - add new method
+    if access_token_has_expired(): # TODO - add new method
         access_token_data = decode_token(enc_access_token, csrf_token, allow_expired=True)
         user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
     else:
@@ -150,6 +177,8 @@ def refresh_expiring_jwts():
     # We need a valid expired token (which is present in the Access Token table) in order to generate a new
     #   access token for this user session
     # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
+
+    # TODO
     access_token = find_access_token_by_string(enc_access_token, user_id) # expired is ok
     refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id)
 
@@ -180,7 +209,7 @@ def refresh_expiring_jwts():
         return
 
     # refresh the access token
-    user = User.query.get(user_id)
+    user = User.query.get(user_id)  # TODO
     _logger.info(f'{method}: user #{user.id} {-1 * access_token_expires_in_seconds} seconds since access ' +
                  f"'token expiration. Refreshing access token ...")
 
@@ -328,8 +357,6 @@ def get_jwt_header() -> dict:
         :return:
             The headers of the JWT in the current request
     """
-    from .view_decorators import verify_jwt_in_request
-
     decoded_header = g.get("_jwt_extended_jwt_header", None)
     if decoded_header is None:
         verify_jwt_in_request(optional=True, no_exception_on_expired=True)

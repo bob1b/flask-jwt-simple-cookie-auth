@@ -1,8 +1,7 @@
 import datetime
-from typing import (Any, Callable, Optional)
-
 import jwt
-from flask import Flask
+from typing import (Any, Callable, Optional, TYPE_CHECKING)
+from flask import Flask, current_app
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
                  MissingRequiredClaimError)
 
@@ -17,7 +16,16 @@ from .exceptions import (CSRFError, FreshTokenRequired, JWTDecodeError, NoAuthor
                          UserClaimsVerificationError, UserLookupError, WrongTokenError)
 from .tokens import (_decode_jwt, _encode_jwt)
 from .typing import (ExpiresDelta, Fresh)
-from .utils import current_user_context_processor
+from .user import current_user_context_processor
+
+
+def get_jwt_manager() -> "JWTManager":
+    try:
+        return current_app.extensions["flask-jwt-simple-cookie-auth"]
+    except KeyError:  # pragma: no cover
+        raise RuntimeError(
+            "You must initialize a JWTManager with this flask application before using this method"
+        ) from None
 
 
 class JWTManager(object):

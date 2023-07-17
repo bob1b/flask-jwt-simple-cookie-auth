@@ -1,6 +1,11 @@
 from datetime import timedelta
 from flask import g
-from typing import (Any, Type, TYPE_CHECKING)
+from typing import (Any, Optional, Type, TYPE_CHECKING)
+from .utils import (get_access_cookie_value, get_refresh_cookie_value)
+from .config import config
+from .tokens import (create_refresh_token, get_jwt)
+from .exceptions import UserLookupError
+from .jwt_manager import get_jwt_manager
 
 
 def login(user, request):
@@ -20,7 +25,7 @@ def logout_user(user, response=None, logout_all_sessions=False):
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user.id}, cannot invalidate access token')
         else:
-            found_tokens = models.AccessToken.query.filter_by(user_id=user.id, token=access_cookie_value).all()
+            found_tokens = models.AccessToken.query.filter_by(user_id=user.id, token=access_cookie_value).all()  # TODO
             if not found_tokens:
                 _logger.warning(f'{method}: no AccessToken(s) found for cookie value "{access_cookie_value}", ' +
                                 f'user #{user.id}')
@@ -32,7 +37,7 @@ def logout_user(user, response=None, logout_all_sessions=False):
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user.id}, cannot invalidate access token')
         else:
-            found_tokens = models.RefreshToken.query.filter_by(
+            found_tokens = models.RefreshToken.query.filter_by(  # TODO
                 user_id=user.id, token=refresh_cookie_value).all()
             if not found_tokens:
                 _logger.warning(
@@ -43,7 +48,7 @@ def logout_user(user, response=None, logout_all_sessions=False):
 
         for token in tokens:
             _logger.info(f'{method}: deleting token: {token}')
-            db.session.delete(token)
+            db.session.delete(token)  # TODO
         db.session.commit()
 
         g.unset_tokens = True
@@ -97,8 +102,8 @@ def create_user_access_token(self, request=None, fresh=False, expires_delta=time
 
 
 def create_user_refresh_token(self, expires_delta=timedelta(weeks=2)):
-    refresh_token = jwt2.create_refresh_token(identity=self.id)
-    refresh_token_obj = models.RefreshToken(token=refresh_token, user_id=self.id)
+    refresh_token = create_refresh_token(identity=self.id)
+    refresh_token_obj = models.RefreshToken(token=refresh_token, user_id=self.id)  # TODO
     db.session.add(refresh_token_obj)
     db.session.commit()
     return refresh_token
@@ -151,6 +156,24 @@ def get_current_user() -> Any:
         raise RuntimeError("You must provide a `@jwt.user_lookup_loader` callback to use this method")
     return jwt_user_dict["loaded_user"]
 
+# TODO - might not need this
+# def set_current_user_from_token_string(access_token_string=False):
+#     try:
+#         # jwt_manager = get_jwt_manager()
+#         jwt_dict = _decode_jwt(encoded_token=access_token_string)
+#     except (NoAuthorizationError, ExpiredSignatureError) as e:
+#         if type(e) == NoAuthorizationError and not optional:
+#             raise
+#         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
+#             raise
+#         g._jwt_extended_jwt = {}
+#         g._jwt_extended_jwt_header = {}
+#         g._jwt_extended_jwt_user = {"loaded_user": None}
+#         return None
+#
+#     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
+#     g._jwt_extended_jwt_header = jwt_header
+#     g._jwt_extended_jwt = jwt_data
 
 def current_user_context_processor() -> Any:
     return {"current_user": get_current_user()}
