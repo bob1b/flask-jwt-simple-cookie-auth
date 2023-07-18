@@ -128,10 +128,7 @@ def default_token_verification_failed_callback(_jwt_header: dict, _jwt_data: dic
     By default, if the user claims verification failed, we return a generic
     error message with a 400 status code
     """
-    return (
-        jsonify({config.error_msg_key: "User claims verification failed"}),
-        HTTPStatus.BAD_REQUEST,
-    )
+    return jsonify({config.error_msg_key: "User claims verification failed"}), HTTPStatus.BAD_REQUEST
 
 
 def default_decode_key_callback(jwt_header: dict, jwt_data: dict) -> str:

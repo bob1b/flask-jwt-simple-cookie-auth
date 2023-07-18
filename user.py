@@ -123,7 +123,7 @@ def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refres
     return refresh_token
 
 
-def _load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
+def load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
     if not has_user_lookup():
         return None
 
@@ -187,7 +187,7 @@ def get_current_user() -> Any:
 #         g._jwt_extended_jwt_user = {"loaded_user": None}
 #         return None
 #
-#     g._jwt_extended_jwt_user = _load_user(jwt_header, jwt_data)
+#     g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
 #     g._jwt_extended_jwt_header = jwt_header
 #     g._jwt_extended_jwt = jwt_data
 

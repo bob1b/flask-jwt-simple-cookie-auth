@@ -1,7 +1,6 @@
 import json
-from typing import (Any, Type, TYPE_CHECKING)
+from typing import (Any, Type)
 from flask import (current_app, Flask)
-from .exceptions import (RevokedTokenError, UserClaimsVerificationError, WrongTokenError)
 
 try:
     from flask.json.provider import DefaultJSONProvider

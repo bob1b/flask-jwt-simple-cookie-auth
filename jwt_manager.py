@@ -1,6 +1,6 @@
 import datetime
 import jwt
-from typing import (Any, Callable, Optional, TYPE_CHECKING)
+from typing import (Any, Callable, Optional)
 from flask import Flask, current_app
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
                  MissingRequiredClaimError)
@@ -173,7 +173,7 @@ class JWTManager(object):
                    ("JWT_REFRESH_CSRF_FIELD_NAME", "csrf_token"),
                    ("JWT_REFRESH_TOKEN_EXPIRES", datetime.timedelta(days=30)),
                    ("JWT_SECRET_KEY", None),
-                   ("JWT_SESSION_COOKIE", True),
+                   ("JWT_SESSION_COOKIE", False), # default to access token *not* being stored as a session cookie
                    ("JWT_ENCODE_NBF", True)]
         for v in values:
             app.config.setdefault(v[0], v[1])

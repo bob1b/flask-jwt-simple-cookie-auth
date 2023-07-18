@@ -1,26 +1,23 @@
-from datetime import (datetime, timedelta, timezone)
+import logging
 from json import JSONEncoder
-from typing import (Iterable, List, Optional, Type, Union)
-
 from flask import current_app
 from jwt.algorithms import requires_cryptography
+from datetime import (datetime, timedelta, timezone)
+from typing import (Iterable, List, Optional, Type, Union)
 
 from .internal_utils import get_json_encoder
 from .typing import ExpiresDelta
-import logging
 
 _logger = logging.getLogger(__name__)
 
 
 class _Config(object):
     """
-    Helper object for accessing and verifying options in this extension. This
-    is meant for internal use of the application; modifying config options
-    should be done with flasks ```app.config```.
+        Helper object for accessing and verifying options in this extension. This is meant for internal use of the
+        application; modifying config options should be done with flasks ```app.config```.
 
-    Default values for the configuration options are set in the jwt_manager
-    object. All of these values are read only. This is simply a loose wrapper
-    with some helper functionality for flasks `app.config`.
+        Default values for the configuration options are set in the jwt_manager object. All of these values are read
+        only. This is simply a loose wrapper with some helper functionality for flasks `app.config`.
     """
 
     @property
@@ -122,8 +119,7 @@ class _Config(object):
             delta = timedelta(seconds=delta)
         if delta is not False:
             try:
-                # Basically runtime typechecking. Probably a better way to do
-                # this with proper type checking
+                # Basically runtime typechecking. Probably a better way to do this with proper type checking
                 delta + datetime.now(timezone.utc)
             except TypeError as e:
                 err = (
@@ -138,8 +134,7 @@ class _Config(object):
         if type(delta) is int:
             delta = timedelta(seconds=delta)
         if delta is not False:
-            # Basically runtime typechecking. Probably a better way to do
-            # this with proper type checking
+            # Basically runtime typechecking. Probably a better way to do this with proper type checking
             try:
                 delta + datetime.now(timezone.utc)
             except TypeError as e:
@@ -193,9 +188,8 @@ class _Config(object):
 
     @property
     def cookie_max_age(self) -> Optional[int]:
-        # Returns the appropriate value for max_age for flask set_cookies. If
-        # session cookie is true, return None, otherwise return the number of
-        # seconds in 1 year
+        # Returns the appropriate value for max_age for flask set_cookies. If session cookie is true, return None,
+        # otherwise return the number of seconds in 1 year
         return None if self.session_cookie else 31540000
 
     @property

@@ -1,8 +1,9 @@
-from functools import wraps
-from flask import (current_app)
 from typing import Any
-from .tokens import (verify_jwt_in_request, after_request)
+from functools import wraps
+from flask import current_app
+from .tokens import (process_and_handle_tokens, after_request)
 
+# TODO - protected decorator
 
 def jwt_sca(optional: bool = False, fresh: bool = False, refresh: bool = False, verify_type: bool = True,
             skip_revocation_check: bool = False) -> Any:
@@ -37,7 +38,8 @@ def jwt_sca(optional: bool = False, fresh: bool = False, refresh: bool = False, 
         def decorator(*args, **kwargs):
 
             # token auto-refreshing and validation
-            verify_jwt_in_request(optional, fresh, refresh, verify_type, skip_revocation_check)
+            process_and_handle_tokens(optional=optional, fresh=fresh, refresh=refresh, verify_type=verify_type,
+                                      skip_revocation_check=skip_revocation_check)
 
             # run the controller
             response = current_app.ensure_sync(fn)(*args, **kwargs)

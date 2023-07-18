@@ -18,12 +18,76 @@ from .utils import (set_access_cookies, set_refresh_cookies, unset_jwt_cookies)
 _logger = logging.getLogger(__name__)
 
 
-def find_access_token_by_string(encrypted_token, user_id):
-    return AccessToken.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+def process_and_handle_tokens(fresh: bool = False,
+                              refresh: bool = False,
+                              optional: bool = False,
+                              verify_type: bool = True,
+                              skip_revocation_check: bool = False,
+                              no_exception_on_expired: bool = False) -> Optional[Tuple[dict, dict]]:
+    """
+        TODO
+
+        :param optional:
+            If ``True``, do not raise an error if no JWT is present in the request. Defaults to ``False``.
+
+        :param no_exception_on_expired:
+            If ``True``, do not raise an error if no JWT is expired. Defaults to ``False``.
+
+        :param fresh:
+            If ``True``, require a JWT marked as ``fresh`` in order to be verified. Defaults to ``False``.
+
+        :param refresh:
+            If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access JWT to access
+            this endpoint. Defaults to ``False``
+
+        :param verify_type:
+            If ``True``, the token type (access or refresh) will be checked according to the ``refresh`` argument. If
+            ``False``, type will not be checked and both access and refresh tokens will be accepted.
+
+        :param skip_revocation_check:
+            If ``True``, revocation status of the token will *not* be checked. If ``False``, revocation status of the
+            token will be checked.
+
+        :return:
+            A tuple containing the jwt_header and the jwt_data if a valid JWT is present in the request. If
+            ``optional=True`` and no JWT is in the request, ``None`` will be returned instead. Raise an exception if an
+            invalid JWT is in the request.
+    """
+    print(f'\nfresh = {fresh}, no_excep = {no_exception_on_expired}')
+    if request.method in config.exempt_methods:
+        return None
+
+    try:
+        # TODO - which should be called first? _decode_jwt_from_request or refresh_expiring_jwts() ?
+        jwt_data, jwt_header = _decode_jwt_from_request(fresh=fresh, refresh=refresh, verify_type=verify_type,
+                                                        skip_revocation_check=skip_revocation_check)
+        refresh_expiring_jwts()
+
+    except (exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
+        if type(e) == exceptions.NoAuthorizationError and not optional:
+            raise
+        if type(e) == ExpiredSignatureError and not no_exception_on_expired:
+            raise
+        g._jwt_extended_jwt = {}
+        g._jwt_extended_jwt_header = {}
+        g._jwt_extended_jwt_user = {"loaded_user": None}
+        return None
+
+    # Save these at the very end so that they are only saved in the request context if the token is valid and all
+    # callbacks succeed
+    g._jwt_extended_jwt_user = user.load_user(jwt_header, jwt_data)
+    g._jwt_extended_jwt_header = jwt_header
+    g._jwt_extended_jwt = jwt_data
+
+    return jwt_header, jwt_data
 
 
-def find_refresh_token_by_string(encrypted_token, user_id):
-    return RefreshToken.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+def find_access_token_by_string(encrypted_token, user_id, access_token_model=None):
+    return access_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+
+
+def find_refresh_token_by_string(encrypted_token, user_id, refresh_token_model=None):
+    return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
 
 
 def expires_in_seconds(token_obj, use_refresh_expiration_delta=False):
@@ -159,7 +223,7 @@ def refresh_expiring_jwts():
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
     method = f'refresh_expiring_jwts()'
 
-    if hasattr(g.checked_expiring) and g.checked_expiring == True: # already checked for expiring JWTs
+    if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
         return
     g.checked_expiring = True
 
@@ -186,8 +250,8 @@ def refresh_expiring_jwts():
     # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
 
     # TODO
-    access_token = find_access_token_by_string(enc_access_token, user_id) # expired is ok
-    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id)
+    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_model=None) # expired is ok
+    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_model=None)
 
     if not access_token:
         _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n {enc_access_token}')
@@ -283,7 +347,7 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
 
 
 def _decode_jwt_from_request(
-        fresh: bool, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
+        fresh: bool = False, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
 ) -> Tuple[dict, dict]:
 
     errors = []
@@ -347,11 +411,11 @@ def get_jwt() -> dict:
 
     decoded_jwt = g.get("_jwt_extended_jwt", None)
     if decoded_jwt is None:
-        verify_jwt_in_request(optional=True, no_exception_on_expired=True)
+        process_and_handle_tokens(optional=True, no_exception_on_expired=True)
         decoded_jwt = g.get("_jwt_extended_jwt", None)
 
     if decoded_jwt is None:
-        raise RuntimeError("You must call `@jwt_sca()` or `verify_jwt_in_request()` before using this method")
+        raise RuntimeError("You must call `@jwt_sca()` or `process_and_handle_tokens()` before using this method")
     return decoded_jwt
 
 
@@ -366,11 +430,11 @@ def get_jwt_header() -> dict:
     """
     decoded_header = g.get("_jwt_extended_jwt_header", None)
     if decoded_header is None:
-        verify_jwt_in_request(optional=True, no_exception_on_expired=True)
+        process_and_handle_tokens(optional=True, no_exception_on_expired=True)
         decoded_header = g.get("_jwt_extended_jwt", None)
 
     if decoded_header is None:
-        raise RuntimeError("You must call `@jwt_sca()` or `verify_jwt_in_request()` before using this method")
+        raise RuntimeError("You must call `@jwt_sca()` or `process_and_handle_tokens()` before using this method")
     return decoded_header
 
 
@@ -424,14 +488,8 @@ def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Opti
             An encoded access token
     """
     jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.encode_jwt_from_config(
-        claims=additional_claims,
-        expires_delta=expires_delta,
-        fresh=fresh,
-        headers=additional_headers,
-        identity=identity,
-        token_type="access",
-    )
+    return jwt_man.encode_jwt_from_config(fresh=fresh, identity=identity, token_type="access", claims=additional_claims,
+                                          headers=additional_headers, expires_delta=expires_delta)
 
 
 def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = None, additional_claims=None,
@@ -522,72 +580,3 @@ def _verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
         now = datetime.timestamp(datetime.now(timezone.utc))
         if fresh < now:
             raise exceptions.FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
-
-
-def verify_jwt_in_request(
-    optional: bool = False,
-    no_exception_on_expired: bool = False,
-    fresh: bool = False,
-    refresh: bool = False,
-    verify_type: bool = True,
-    skip_revocation_check: bool = False,
-) -> Optional[Tuple[dict, dict]]:
-    """
-        Verify that a valid JWT is present in the request, unless ``optional=True`` in
-        which case no JWT is also considered valid.
-
-        :param optional:
-            If ``True``, do not raise an error if no JWT is present in the request. Defaults to ``False``.
-
-        :param no_exception_on_expired:
-            If ``True``, do not raise an error if no JWT is expired. Defaults to ``False``.
-
-        :param fresh:
-            If ``True``, require a JWT marked as ``fresh`` in order to be verified. Defaults to ``False``.
-
-        :param refresh:
-            If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access JWT to access
-            this endpoint. Defaults to ``False``
-
-        :param verify_type:
-            If ``True``, the token type (access or refresh) will be checked according to the ``refresh`` argument. If
-            ``False``, type will not be checked and both access and refresh tokens will be accepted.
-
-        :param skip_revocation_check:
-            If ``True``, revocation status of the token will *not* be checked. If ``False``, revocation status of the
-            token will be checked.
-
-        :return:
-            A tuple containing the jwt_header and the jwt_data if a valid JWT is present in the request. If
-            ``optional=True`` and no JWT is in the request, ``None`` will be returned instead. Raise an exception if an
-            invalid JWT is in the request.
-    """
-    if request.method in config.exempt_methods:
-        return None
-
-    try:
-        jwt_data, jwt_header = _decode_jwt_from_request(
-            fresh,
-            refresh=refresh,
-            verify_type=verify_type,
-            skip_revocation_check=skip_revocation_check,
-        )
-        refresh_expiring_jwts()
-
-    except (exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
-        if type(e) == exceptions.NoAuthorizationError and not optional:
-            raise
-        if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-            raise
-        g._jwt_extended_jwt = {}
-        g._jwt_extended_jwt_header = {}
-        g._jwt_extended_jwt_user = {"loaded_user": None}
-        return None
-
-    # Save these at the very end so that they are only saved in the request
-    # context if the token is valid and all callbacks succeed
-    g._jwt_extended_jwt_user = user._load_user(jwt_header, jwt_data)
-    g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt = jwt_data
-
-    return jwt_header, jwt_data
