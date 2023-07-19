@@ -9,11 +9,12 @@ from datetime import (datetime, timedelta, timezone)
 from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
 
 from . import user
+from . import typing
+from . import utils
 from . import exceptions
 from . import jwt_manager
 from .config import config
-from .typing import (ExpiresDelta, Fresh)
-from .utils import (set_access_cookies, set_refresh_cookies, unset_jwt_cookies)
+
 
 _logger = logging.getLogger(__name__)
 
@@ -215,8 +216,8 @@ def encode_jwt(algorithm: str,
                audience: Union[str, Iterable[str]],
                claim_overrides: dict,
                csrf: bool,
-               expires_delta: ExpiresDelta,
-               fresh: Fresh,
+               expires_delta: typing.ExpiresDelta,
+               fresh: typing.Fresh,
                header_overrides: dict,
                identity: Any,
                identity_claim_key: str,
@@ -347,16 +348,16 @@ def after_request(response):
     # Set the new access token as a response cookie
     if hasattr(g, "new_access_token"):
         _logger.info(f"g.new_access_token = {g.new_access_token} ***")
-        set_access_cookies(response, g.new_access_token)
+        utils.set_access_cookies(response, g.new_access_token)
 
     if hasattr(g, "new_refresh_token"):
         _logger.info(f"g.new_refresh_token = {g.new_refresh_token} ***")
-        set_refresh_cookies(response, g.new_refresh_token)
+        utils.set_refresh_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
     if hasattr(g, "unset_tokens") and g.unset_tokens:
         _logger.info(f" g.unset tokens = {g.unset_tokens} *** ")
-        unset_jwt_cookies(response)
+        utils.unset_jwt_cookies(response)
 
     return response
 
@@ -494,10 +495,10 @@ def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
 
 
 def create_access_token(identity: Any,
-                        fresh: Fresh = False,
+                        fresh: typing.Fresh = False,
                         additional_claims=None,
                         additional_headers=None,
-                        expires_delta: Optional[ExpiresDelta] = None):
+                        expires_delta: Optional[typing.ExpiresDelta] = None):
     """
         :param identity:
             The identity of this token. It can be any data that is json serializable. You can use
@@ -535,7 +536,7 @@ def create_access_token(identity: Any,
                                           headers=additional_headers, expires_delta=expires_delta)
 
 
-def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = None, additional_claims=None,
+def create_refresh_token(identity: Any, expires_delta: Optional[typing.ExpiresDelta] = None, additional_claims=None,
                          additional_headers=None):
     """
         :param identity:
