@@ -71,9 +71,7 @@ def process_and_handle_tokens(fresh: bool = False,
 
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
-    g._jwt_extended_jwt_user = user.load_user(jwt_header, jwt_data)
-    g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt = jwt_data
+    user.update_current_user(jwt_header, jwt_data)
 
     return jwt_header, jwt_data
 
@@ -255,8 +253,10 @@ def encode_jwt(nbf: Optional[bool] = None,
     if isinstance(fresh, timedelta):
         fresh = datetime.timestamp(now + fresh)
 
+    # TODO - this will need to be rewritten
     if not identity:
-        identity = jwt_man.user_identity_callback(identity) # TODO - would this work? identity is falsy here
+        print(f"calling user_identity_callback(): identity = {identity}")
+        identity = jwt_man.user_identity_callback(identity) # identity data would have to come from somewhere
 
     if secret is None:
         secret = jwt_man.encode_key_callback(identity)
@@ -296,13 +296,20 @@ def encode_jwt(nbf: Optional[bool] = None,
     return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
 
 
-def access_token_has_expired():
-    # TODO - probably will need to use jwt to check expiration, look for code raising ExpiredSignatureError
-    # TODO - FILL THIS IN
-    pass
+def access_token_has_expired(token_obj: Any,
+                             fresh_required: bool = False, # TODO
+                             access_token_class: Any = None,
+                             use_refresh_expiration_delta: bool = False) -> bool:
+    try:
+        expires_in = expires_in_seconds(token_obj,
+                                        access_token_class=access_token_class,
+                                        use_refresh_expiration_delta=use_refresh_expiration_delta)
+        return expires_in <= 0
+    except ExpiredSignatureError as e:
+        return True
 
 
-def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
+def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None):
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
     # TODO - refactor this
     method = f'refresh_expiring_jwts()'
@@ -334,8 +341,8 @@ def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
     # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
 
     # TODO
-    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_model=access_token_model) # expired is ok
-    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_model=refresh_token_model)
+    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_class=access_token_class) # expired is ok
+    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_class=refresh_token_class)
 
     if not access_token:
         _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n ' +
@@ -369,7 +376,9 @@ def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
     _logger.info(f'{method}: user #{user.id} {-1 * access_token_expires_in_seconds} seconds since access ' +
                  f"'token expiration. Refreshing access token ...")
 
-    access_token = user.create_access_token(request=request, replace=expired_access_token)
+    # TODO - is this the correct method to call here?
+    access_token = user.create_or_update_user_access_token(user, db=db, access_token_class=access_token_class,
+                                                           update=expired_access_token)
     g.unset_tokens = False
     g.new_access_token = access_token
 
@@ -488,25 +497,42 @@ def get_csrf_token(encoded_token: str) -> str:
 
 
 
-def find_access_token_by_string(encrypted_token: str, user_id: int, access_token_model: Any = None):
-    return access_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+def find_access_token_by_string(user_id: int,
+                                encrypted_token: str,
+                                return_all: bool = False,
+                                access_token_class: Any = None) -> Any:
+    results = access_token_class.query.filter_by(token=encrypted_token, user_id=user_id)
+    if return_all:
+        return results.all()
+    return results.one_or_none()
 
 
-def find_refresh_token_by_string(encrypted_token: str, user_id: int, refresh_token_model: Any = None):
-    return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+def find_refresh_token_by_string(user_id: int,
+                                 encrypted_token: str,
+                                 return_all: bool = False,
+                                 refresh_token_class: Any = None) -> Any:
+    results = refresh_token_class.query.filter_by(token=encrypted_token, user_id=user_id)
+    if return_all:
+        return results.all()
+    return results.one_or_none()
 
 
 def expires_in_seconds(token_obj: Any,
-                       access_token_model: Any = None,
+                       access_token_class: Any = None,
                        use_refresh_expiration_delta: bool = False) -> int:
-    """ TODO - probably want to allow external modules to set this method so it'll match its own token model. For
-               example, .token might not be the correct field name for every app """
+    """
+        token_obj: a Token model (ie. Sqlalchemy) object
+
+        TODO - probably want to allow external modules to set this method somehow so it'll match its own token model.
+               For example, .token might not be the correct field name for token data in every app's Token model
+   """
     token_data = decode_and_validate_token(token_obj.token, allow_expired=True)
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
-    if use_refresh_expiration_delta and type(token_obj) == access_token_model:
-        # TODO - use config values
-        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
+    # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
+    if use_refresh_expiration_delta and type(token_obj) == access_token_class:
+        # Adjust the expiration time from access delta to refresh delta
+        expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
     return expires_in
 
 

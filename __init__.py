@@ -3,7 +3,6 @@ from . import *
 __version__ = "b4.5.2"  # modified by bob1b
 
 # TODO - refactor verify_jwt_in_request method -> process_and_handle_tokens
-# TODO - what is JWTManager class for? why isn't it used more
 
 ## features ##
 # TODO - is a user logged in or not? return user_id or None

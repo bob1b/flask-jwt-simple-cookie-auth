@@ -17,53 +17,56 @@ _logger = logging.getLogger(__name__)
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 
-def login_user(user_obj, access_token_model=None, refresh_token_model=None, db=None):
+def login_user(user_obj, access_token_class=None, refresh_token_class=None, db=None):
     # create cookies and save in 'g' so they will be applied to the response
-    g.new_access_token = create_user_access_token(user_obj, access_token_model=access_token_model, db=db)
-    g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_model=refresh_token_model, db=db)
-    remove_user_expired_tokens(user_obj, access_token_model=access_token_model, refresh_token_model=refresh_token_model,
+    g.new_access_token = create_or_update_user_access_token(user_obj, access_token_class=access_token_class, db=db)
+    g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_class=refresh_token_class, db=db)
+    remove_user_expired_tokens(user_obj, access_token_class=access_token_class, refresh_token_class=refresh_token_class,
                                db=db)
 
 
-def logout_user(user_obj, access_token_model=None, refresh_token_model=None, logout_all_sessions=False, db=None):
+def logout_user(user_obj, access_token_class=None, refresh_token_class=None, logout_all_sessions=False, db=None):
     method = f'logout_user({user_obj.id}, logout_all_sessions={logout_all_sessions})'
 
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
-        tokens = []
+        user_tokens = []
 
         access_cookie_value = utils.get_access_cookie_value()
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_tokens = access_token_model.query.filter_by(user_id=user_obj.id, token=access_cookie_value).all()  # TODO
-            if not found_tokens:
+            found_access_tokens = tokens.find_access_token_by_string(
+                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True
+            )
+            if not found_access_tokens:
                 _logger.warning(f'{method}: no AccessToken(s) found for cookie value "{access_cookie_value}", ' +
                                 f'user #{user_obj.id}')
             else:
-                tokens = tokens + found_tokens
+                user_tokens = user_tokens + found_access_tokens
 
         refresh_cookie_value = utils.get_refresh_cookie_value()
         if not refresh_cookie_value:
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_tokens = refresh_token_model.query.filter_by(  # TODO
-                user_id=user_obj.id, token=refresh_cookie_value).all()
-            if not found_tokens:
-                _logger.warning(
-                    f'{method}: no RefreshToken(s) found for cookie value "{refresh_cookie_value}", user #{user_obj.id}')
+            found_refresh_tokens = tokens.find_access_token_by_string(
+                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True
+            )
+            if not found_refresh_tokens:
+                _logger.warning(f'{method}: no RefreshToken(s) found for cookie value "{refresh_cookie_value}", ' +
+                                f'user #{user_obj.id}')
             else:
-                tokens = tokens + found_tokens
+                user_tokens = user_tokens + found_refresh_tokens
 
-        for token in tokens:
+        for token in user_tokens:
             _logger.info(f'{method}: deleting token: {token}')
-            db.session.delete(token)  # TODO
+            db.session.delete(token)  # TODO - create user function for this
         db.session.commit()
 
         g.unset_tokens = True
 
 
-def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_model=None, db=None):
+def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_class=None, db=None):
     """
         Remove expired access and refresh tokens for this user. Access Tokens expire in a shorter amount of time than
           Refresh Tokens, but Access Tokens can be refreshed. So, only consider Access tokens to be expired if they
@@ -75,13 +78,13 @@ def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_
     method = f'remove_expired_tokens(user #{user_obj.id} ({user_obj.email}))'
     removed_access_count = 0
     removed_refresh_count = 0
-    user_tokens = access_token_model.query.filter_by(user_id=user_obj.id).all() + \
-                  refresh_token_model.query.filter_by(user_id=user_obj.id).all()
+    user_tokens = access_token_class.query.filter_by(user_id=user_obj.id).all() + \
+                  refresh_token_class.query.filter_by(user_id=user_obj.id).all()
     for token_obj in user_tokens:
-        expires_in_seconds = tokens.expires_in_seconds(token_obj, access_token_model=access_token_model,
+        expires_in_seconds = tokens.expires_in_seconds(token_obj, access_token_class=access_token_class,
                                                        use_refresh_expiration_delta=True)
         if int(expires_in_seconds) < 0:
-            if type(token_obj) == access_token_model:
+            if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
                 removed_refresh_count = removed_refresh_count + 1
@@ -91,34 +94,36 @@ def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_
                  'refresh tokens')
 
 
-def create_user_access_token(user_obj,
-                             db=None,
-                             fresh=False,
-                             replace=None,
-                             access_token_model=None,
-                             expires_delta=timedelta(minutes=15)):
+def create_or_update_user_access_token(user_obj,
+                                       db=None,
+                                       fresh=False,
+                                       update=None,
+                                       access_token_class=None,
+                                       expires_delta=timedelta(minutes=15)):
     method = f"User.create_user_access_token({user_obj})"
 
     user_agent = None
     if request:
         user_agent = request.headers.get("User-Agent")
 
-    access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh) # set JWT access cookie (includes CSRF)
+    # create token and set JWT access cookie (includes CSRF)
+    access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh, expires_delta=expires_delta)
     _logger.info(f"{method}: Created new access_token = {access_token}")
 
-    if replace and type(replace) == access_token_model:
-        replace.token = access_token
-        replace.user_agent = user_agent
+    if update and type(update) == access_token_class:
+        update.token = access_token
+        update.user_agent = user_agent
     else:
-        access_token_obj = access_token_model(token=access_token, user_id=user_obj.id, user_agent=user_agent)
+        access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
         db.session.add(access_token_obj)
     db.session.commit()
     return access_token
 
 
-def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refresh_token_model=None, db=None):
-    refresh_token = tokens.create_refresh_token(identity=user_obj.id)
-    refresh_token_obj = refresh_token_model(token=refresh_token, user_id=user_obj.id)  # TODO
+def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refresh_token_class=None, db=None):
+    # create token and set JWT refresh cookie
+    refresh_token = tokens.create_refresh_token(identity=user_obj.id, expires_delta=expires_delta)
+    refresh_token_obj = refresh_token_class(token=refresh_token, user_id=user_obj.id)
     db.session.add(refresh_token_obj)
     db.session.commit()
     return refresh_token
@@ -158,9 +163,7 @@ def get_current_user() -> Any:
         :return:
             The current user object for the JWT in the current request
     """
-    from .tokens import get_jwt
-
-    get_jwt()  # Raise an error if not in a decorated context
+    tokens.get_jwt()  # Raise an error if not in a decorated context
 
     # tokens had expired at beginning of this request
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
@@ -173,13 +176,11 @@ def get_current_user() -> Any:
     return jwt_user_dict["loaded_user"]
 
 
-# TODO - might not need this
-# def set_current_user_from_token_string(access_token_string=False):
-#     try:
-
-#     g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
-#     g._jwt_extended_jwt_header = jwt_header
-#     g._jwt_extended_jwt = jwt_data
+# TODO - test this well
+def update_current_user(jwt_header, jwt_data):
+    g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
+    g._jwt_extended_jwt_header = jwt_header
+    g._jwt_extended_jwt = jwt_data
 
 
 def current_user_context_processor() -> Any:

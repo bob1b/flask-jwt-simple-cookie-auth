@@ -44,8 +44,8 @@ def default_user_identity_callback(userdata: Any) -> Any:
     """
         By default, we use the passed in object directly as the jwt identity.
 
-        :param userdata: data passed in as the ```identity``` argument to the ```create_access_token``` and
-                         ```create_refresh_token``` functions
+        :param userdata:  data passed in as the ```identity``` argument to the ```create_access_token``` and
+                          ```create_refresh_token``` functions
     """
     return userdata
 

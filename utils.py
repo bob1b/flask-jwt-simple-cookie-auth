@@ -2,20 +2,20 @@ import logging
 from typing import Optional
 from flask import (Response, Request, request)
 from .config import config
-from .tokens import get_csrf_token
+from . import tokens
 
 _logger = logging.getLogger(__name__)
 
 
 def get_access_cookie_value(req: Request = None) -> dict or None:
-    """ TODO """
+    """ returns the value (encoded token) of the access cookie """
     if not req:
         req = request
     return req.cookies.get(config.access_cookie_name)
 
 
 def get_refresh_cookie_value(req: Request = None) -> dict or None:
-    """ TODO """
+    """ returns the value (encoded token) of the refresh cookie """
     if not req:
         req = request
     return req.cookies.get(config.refresh_cookie_name)
@@ -42,7 +42,7 @@ def set_access_cookies(response: Response, encoded_access_token: str, max_age=No
             :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
             JWT_COOKIE_DOMAIN option will be ignored.
     """
-    import json
+
     data = { 
         'name': config.access_cookie_name,
         'value': encoded_access_token,
@@ -52,7 +52,7 @@ def set_access_cookies(response: Response, encoded_access_token: str, max_age=No
         'path': config.access_cookie_path,
         'samesite': config.cookie_samesite
     }
-    _logger.info(f'\naccess cookie: {json.dumps(data)}')
+    # _logger.info(f'\naccess cookie: {json.dumps(data)}')
 
     response.set_cookie(
         config.access_cookie_name,
@@ -68,7 +68,7 @@ def set_access_cookies(response: Response, encoded_access_token: str, max_age=No
     if config.csrf_protect and config.csrf_in_cookies:
         response.set_cookie(
             config.access_csrf_cookie_name,
-            value=get_csrf_token(encoded_access_token),
+            value=tokens.get_csrf_token(encoded_access_token),
             max_age=max_age or config.cookie_max_age,
             secure=config.cookie_secure,
             httponly=False,
@@ -118,7 +118,7 @@ def set_refresh_cookies(
     if config.csrf_protect and config.csrf_in_cookies:
         response.set_cookie(
             config.refresh_csrf_cookie_name,
-            value=get_csrf_token(encoded_refresh_token),
+            value=tokens.get_csrf_token(encoded_refresh_token),
             max_age=max_age or config.cookie_max_age,
             secure=config.cookie_secure,
             httponly=False,
@@ -137,7 +137,7 @@ def unset_jwt_cookies(response: Response, domain: Optional[str] = None) -> None:
         A Flask Response object
 
     :param domain:
-        TODO
+        Overrides the cookie domain. Otherwise, ``config.cookie_domain`` will be used
     """
     unset_access_cookies(response, domain)
     unset_refresh_cookies(response, domain)
