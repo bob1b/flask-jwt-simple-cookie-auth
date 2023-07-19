@@ -212,24 +212,54 @@ def validate_jwt(algorithms: List,
 
     return decoded_token
 
-def encode_jwt(algorithm: str,
-               audience: Union[str, Iterable[str]],
-               claim_overrides: dict,
-               csrf: bool,
-               expires_delta: typing.ExpiresDelta,
-               fresh: typing.Fresh,
-               header_overrides: dict,
-               identity: Any,
-               identity_claim_key: str,
-               issuer: str,
-               json_encoder: Type[JSONEncoder],
-               secret: str,
-               token_type: str,
-               nbf: bool) -> str:
+
+def encode_jwt(nbf: Optional[bool] = None,
+               csrf: Optional[bool] = None,
+               issuer: Optional[str] = None,
+               secret: Optional[str] = None,
+               identity: Optional[Any] = None,
+               algorithm: Optional[str] = None,
+               token_type: Optional[str] = 'access',
+               fresh: Optional[typing.Fresh] = None,
+               claim_overrides: Optional[dict] = None,
+               header_overrides: Optional[dict] = None,
+               identity_claim_key: Optional[str] = None,
+               audience: Union[str, Iterable[str]] = False,
+               json_encoder: Optional[Type[JSONEncoder]] = None,
+               expires_delta: Optional[typing.ExpiresDelta] = None) -> str:
+
+    jwt_man = jwt_manager.get_jwt_manager()
     now = datetime.now(timezone.utc)
+
+    if nbf is None:
+        nbf = config.encode_nbf
+
+    if csrf is None:
+        csrf = config.csrf_protect
+
+    if algorithm is None:
+        algorithm = config.algorithm
+
+    if issuer is None:
+        issuer = config.encode_issuer
+
+    if audience is None:
+        audience = config.encode_audience
+
+    if json_encoder is None:
+        json_encoder = config.json_encoder
+
+    if identity_claim_key is None:
+        identity_claim_key = config.identity_claim_key
 
     if isinstance(fresh, timedelta):
         fresh = datetime.timestamp(now + fresh)
+
+    if not identity:
+        identity = jwt_man.user_identity_callback(identity) # TODO - would this work? identity is falsy here
+
+    if secret is None:
+        secret = jwt_man.encode_key_callback(identity)
 
     token_data = {
         "fresh": fresh,
@@ -242,14 +272,20 @@ def encode_jwt(algorithm: str,
     if nbf:
         token_data["nbf"] = now
 
-    if csrf:
-        token_data["csrf"] = str(uuid.uuid4())
+    if issuer:
+        token_data["iss"] = issuer
 
     if audience:
         token_data["aud"] = audience
 
-    if issuer:
-        token_data["iss"] = issuer
+    if csrf:
+        token_data["csrf"] = str(uuid.uuid4())
+
+    if expires_delta is None:
+        if token_type == "access":
+            expires_delta = config.access_expires
+        else:
+            expires_delta = config.refresh_expires
 
     if expires_delta:
         token_data["exp"] = now + expires_delta
@@ -495,9 +531,9 @@ def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
 
 
 def create_access_token(identity: Any,
-                        fresh: typing.Fresh = False,
                         additional_claims=None,
                         additional_headers=None,
+                        fresh: typing.Fresh = False,
                         expires_delta: Optional[typing.ExpiresDelta] = None):
     """
         :param identity:
@@ -531,13 +567,14 @@ def create_access_token(identity: Any,
 
         :return:  An encoded access token
     """
-    jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.encode_jwt_from_config(fresh=fresh, identity=identity, token_type="access", claims=additional_claims,
-                                          headers=additional_headers, expires_delta=expires_delta)
+    return encode_jwt(claim_overrides=additional_claims, expires_delta=expires_delta, fresh=fresh,
+                      header_overrides=additional_headers, identity=identity, token_type="access")
 
 
-def create_refresh_token(identity: Any, expires_delta: Optional[typing.ExpiresDelta] = None, additional_claims=None,
-                         additional_headers=None):
+def create_refresh_token(identity: Any,
+                         additional_claims=None,
+                         additional_headers=None,
+                         expires_delta: Optional[typing.ExpiresDelta] = None):
     """
         :param identity:
             The identity of this token. It can be any data that is json serializable. You can use
@@ -562,13 +599,8 @@ def create_refresh_token(identity: Any, expires_delta: Optional[typing.ExpiresDe
 
         :return:  An encoded refresh token
     """
-    jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.encode_jwt_from_config(fresh=False,
-                                          identity=identity,
-                                          token_type="refresh",
-                                          claims=additional_claims,
-                                          headers=additional_headers,
-                                          expires_delta=expires_delta)
+    return encode_jwt(claim_overrides=additional_claims, expires_delta=expires_delta,
+                      header_overrides=additional_headers, identity=identity, token_type="refresh")
 
 
 def verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:

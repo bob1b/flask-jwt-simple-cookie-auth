@@ -42,13 +42,13 @@ class JWTManager(object):
         # decorators
         self.user_lookup_callback: Optional[Callable] = None
         self.decode_key_callback = default_callbacks.default_decode_key_callback
-        self._encode_key_callback = default_callbacks.default_encode_key_callback
+        self.encode_key_callback = default_callbacks.default_encode_key_callback
         self._unauthorized_callback = default_callbacks.default_unauthorized_callback
         self._expired_token_callback = default_callbacks.default_expired_token_callback
         self._invalid_token_callback = default_callbacks.default_invalid_token_callback
         self._revoked_token_callback = default_callbacks.default_revoked_token_callback
         self.token_in_blocklist_callback = default_callbacks.default_blocklist_callback
-        self._user_identity_callback = default_callbacks.default_user_identity_callback
+        self.user_identity_callback = default_callbacks.default_user_identity_callback
         self._user_claims_callback = default_callbacks.default_additional_claims_callback
         self._jwt_additional_header_callback = default_callbacks.default_jwt_headers_callback
         self._user_lookup_error_callback = default_callbacks.default_user_lookup_error_callback
@@ -229,7 +229,7 @@ class JWTManager(object):
             The argument is the identity used to create this JWT.
             The decorated function must return a *string* which is the secrete key used to encode the JWT.
         """
-        self._encode_key_callback = callback
+        self.encode_key_callback = callback
         return callback
 
     def expired_token_loader(self, callback: Callable) -> Callable:
@@ -344,7 +344,7 @@ class JWTManager(object):
             The argument is the identity that was used when creating a JWT.
             The decorated function must return JSON serializable data.
         """
-        self._user_identity_callback = callback
+        self.user_identity_callback = callback
         return callback
 
     def user_lookup_loader(self, callback: Callable) -> Callable:
@@ -379,35 +379,3 @@ class JWTManager(object):
         self._user_lookup_error_callback = callback
         return callback
 
-    def encode_jwt_from_config(self, identity: Any, token_type: str, claims=None, fresh: Fresh = False,
-                               expires_delta: Optional[ExpiresDelta] = None, headers=None) -> str:
-        header_overrides = self._jwt_additional_header_callback(identity)
-        if headers is not None:
-            header_overrides.update(headers)
-
-        claim_overrides = self._user_claims_callback(identity)
-        if claims is not None:
-            claim_overrides.update(claims)
-
-        if expires_delta is None:
-            if token_type == "access":
-                expires_delta = config.access_expires
-            else:
-                expires_delta = config.refresh_expires
-
-        return tokens.encode_jwt(
-            fresh=fresh,
-            token_type=token_type,
-            nbf=config.encode_nbf,
-            csrf=config.csrf_protect,
-            algorithm=config.algorithm,
-            expires_delta=expires_delta,
-            issuer=config.encode_issuer,
-            audience=config.encode_audience,
-            claim_overrides=claim_overrides,
-            header_overrides=header_overrides,
-            json_encoder=config.json_encoder,
-            secret=self._encode_key_callback(identity),
-            identity_claim_key=config.identity_claim_key,
-            identity=self._user_identity_callback(identity),
-        )
