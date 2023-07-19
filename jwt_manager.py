@@ -393,7 +393,7 @@ class JWTManager(object):
             else:
                 expires_delta = config.refresh_expires
 
-        return tokens._encode_jwt(
+        return tokens.encode_jwt(
             algorithm=config.algorithm,
             audience=config.encode_audience,
             claim_overrides=claim_overrides,
@@ -432,11 +432,11 @@ class JWTManager(object):
         }
 
         try:
-            return tokens._decode_jwt(**kwargs, allow_expired=allow_expired)
+            return tokens.decode_jwt(**kwargs, allow_expired=allow_expired)
         except ExpiredSignatureError as e:
             # TODO: If we ever do another breaking change, don't raise this pyjwt error directly, instead raise a custom
             #  error of ours from this error.
             e.jwt_header = unverified_headers  # type: ignore
-            e.jwt_data = tokens._decode_jwt(**kwargs, allow_expired=True)  # type: ignore
+            e.jwt_data = tokens.decode_jwt(**kwargs, allow_expired=True)  # type: ignore
             if not allow_expired:
                 raise

@@ -25,8 +25,6 @@ def process_and_handle_tokens(fresh: bool = False,
                               skip_revocation_check: bool = False,
                               no_exception_on_expired: bool = False) -> Optional[Tuple[dict, dict]]:
     """
-        TODO
-
         :param optional:
             If ``True``, do not raise an error if no JWT is present in the request. Defaults to ``False``.
 
@@ -53,14 +51,13 @@ def process_and_handle_tokens(fresh: bool = False,
             ``optional=True`` and no JWT is in the request, ``None`` will be returned instead. Raise an exception if an
             invalid JWT is in the request.
     """
-    print(f'\nfresh = {fresh}, no_excep = {no_exception_on_expired}')
     if request.method in config.exempt_methods:
         return None
 
     try:
-        # TODO - which should be called first? _decode_jwt_from_request or refresh_expiring_jwts() ?
-        jwt_data, jwt_header = _decode_jwt_from_request(fresh=fresh, refresh=refresh, verify_type=verify_type,
-                                                        skip_revocation_check=skip_revocation_check)
+        # TODO - which should be called first? decode_jwt_from_request or refresh_expiring_jwts() ?
+        jwt_data, jwt_header = decode_jwt_from_request(fresh=fresh, refresh=refresh, verify_type=verify_type,
+                                                       skip_revocation_check=skip_revocation_check)
         refresh_expiring_jwts()
 
     except (exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
@@ -90,13 +87,14 @@ def find_refresh_token_by_string(encrypted_token, user_id, refresh_token_model=N
     return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
 
 
-def expires_in_seconds(token_obj, use_refresh_expiration_delta=False):
+def expires_in_seconds(token_obj): # , use_refresh_expiration_delta=False):
     token_data = decode_token(token_obj.token, allow_expired=True)
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
     # if use_refresh_expiration_delta and type(self) == AccessToken: # TODO
     #     expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
     return expires_in
+
 
 def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False) -> dict:
     """
@@ -106,24 +104,16 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
         This will not fire the user loader callbacks, save the token for access in protected endpoints, checked if a
         token is revoked, etc. This is purely used to ensure that a JWT is valid.
 
-        :param encoded_token:
-            The encoded JWT to decode.
-
-        :param csrf_value:
-            Expected CSRF double submit value (optional).
-
-        :param allow_expired:
-            If ``True``, do not raise an error if the JWT is expired.  Defaults to ``False``
-
-        :return:
-            Dictionary containing the payload of the JWT decoded JWT.
+            :param encoded_token:  The encoded JWT to decode.
+            :param csrf_value:  Expected CSRF double submit value (optional).
+            :param allow_expired:  If ``True``, do not raise an error if the JWT is expired.  Defaults to ``False``
+            :return:  Dictionary containing the payload of the JWT decoded JWT.
     """
-
     jwt_man = jwt_manager.get_jwt_manager()
     return jwt_man.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
 
 
-def _encode_jwt(algorithm: str,
+def encode_jwt(algorithm: str,
                 audience: Union[str, Iterable[str]],
                 claim_overrides: dict,
                 csrf: bool,
@@ -171,7 +161,7 @@ def _encode_jwt(algorithm: str,
     return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
 
 
-def _decode_jwt(algorithms: List,
+def decode_jwt(algorithms: List,
                 allow_expired: bool,
                 audience: Union[str, Iterable[str]],
                 csrf_value: str,
@@ -219,7 +209,7 @@ def access_token_has_expired():
     pass
 
 
-def refresh_expiring_jwts():
+def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
     method = f'refresh_expiring_jwts()'
 
@@ -250,11 +240,12 @@ def refresh_expiring_jwts():
     # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
 
     # TODO
-    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_model=None) # expired is ok
-    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_model=None)
+    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_model=access_token_model) # expired is ok
+    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_model=refresh_token_model)
 
     if not access_token:
-        _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n {enc_access_token}')
+        _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n ' +
+                        enc_access_token)
         return
 
     # found unexpired access token - no need to refresh
@@ -313,9 +304,11 @@ def after_request(response):
     return response
 
 
-def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
-    # Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or the
-    # access token was refreshed
+def decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
+    """
+        Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or
+        the access token was refreshed
+    """
 
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
         raise exceptions.NoAuthorizationError(f'Missing cookie <all unset>')
@@ -346,14 +339,14 @@ def _decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     return encoded_token, csrf_value
 
 
-def _decode_jwt_from_request(
-        fresh: bool = False, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
+def decode_jwt_from_request(
+    fresh: bool = False, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
 ) -> Tuple[dict, dict]:
 
     errors = []
     decoded_token = None
     try:
-        encoded_token, csrf_token = _decode_jwt_from_cookies(refresh) # this method checks flask.g before actual cookies
+        encoded_token, csrf_token = decode_jwt_from_cookies(refresh) # this method checks "flask.g" before the cookies
         decoded_token = decode_token(encoded_token, csrf_token)
         jwt_header = get_unverified_jwt_headers(encoded_token)
     except exceptions.NoAuthorizationError as e:
@@ -369,7 +362,7 @@ def _decode_jwt_from_request(
         verify_token_type(decoded_token, refresh)
 
     if fresh:
-        _verify_token_is_fresh(jwt_header, decoded_token)
+        verify_token_is_fresh(jwt_header, decoded_token)
 
     if not skip_revocation_check:
         verify_token_not_blocklisted(jwt_header, decoded_token)
@@ -404,9 +397,7 @@ def get_jwt() -> dict:
         In a protected endpoint, this will return the python dictionary which has the payload of the JWT that is
         accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
         returned.
-
-        :return:
-            The payload (claims) of the JWT in the current request
+            :return:  The payload (claims) of the JWT in the current request
     """
 
     decoded_jwt = g.get("_jwt_extended_jwt", None)
@@ -424,9 +415,7 @@ def get_jwt_header() -> dict:
         In a protected endpoint, this will return the python dictionary which has the header of the JWT that is
         accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
         returned.
-
-        :return:
-            The headers of the JWT in the current request
+            :return:  The headers of the JWT in the current request
     """
     decoded_header = g.get("_jwt_extended_jwt_header", None)
     if decoded_header is None:
@@ -441,20 +430,19 @@ def get_jwt_header() -> dict:
 def get_jwt_identity() -> Any:
     """
         In a protected endpoint, this will return the identity of the JWT that is accessing the endpoint. If no JWT is
-        present due to ``jwt_sca(optional=True)``, ``None`` is returned.
-
-        :return:
-            The identity of the JWT in the current request
+        present due to ``jwt_sca(optional=True)``, ``None`` is returned. Returns the identity of the JWT in the current
+        request
     """
     return get_jwt().get(config.identity_claim_key, None)
 
 
 
-def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Optional[ExpiresDelta] = None,
-                        additional_claims=None, additional_headers=None):
+def create_access_token(identity: Any,
+                        fresh: Fresh = False,
+                        additional_claims=None,
+                        additional_headers=None,
+                        expires_delta: Optional[ExpiresDelta] = None):
     """
-        Create a new access token.
-
         :param identity:
             The identity of this token. It can be any data that is json serializable. You can use
             :meth:`~flask_jwt_extended.JWTManager.user_identity_loader` to define a callback function to convert any
@@ -484,8 +472,7 @@ def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Opti
             :meth:`~flask_jwt_extended.JWTManager.additional_headers_loader` callback. On conflict, these headers take
             precedence.
 
-        :return:
-            An encoded access token
+        :return:  An encoded access token
     """
     jwt_man = jwt_manager.get_jwt_manager()
     return jwt_man.encode_jwt_from_config(fresh=fresh, identity=identity, token_type="access", claims=additional_claims,
@@ -495,8 +482,6 @@ def create_access_token(identity: Any, fresh: Fresh = False, expires_delta: Opti
 def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = None, additional_claims=None,
                          additional_headers=None):
     """
-        Create a new refresh token.
-
         :param identity:
             The identity of this token. It can be any data that is json serializable. You can use
             :meth:`~flask_jwt_extended.JWTManager.user_identity_loader` to define a callback function to convert any
@@ -509,7 +494,7 @@ def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = 
 
         :param additional_claims:
             Optional. A hash of claims to include in the refresh token. These claims are merged into the default claims
-            (exp, iat, etc) and claims returned from the :meth:`~flask_jwt_extended.JWTManager.additional_claims_loader`
+            (exp, iat, etc.) and claims returned from the :meth:`~flask_jwt_extended.JWTManager.additional_claims_loader`
             callback. On conflict, these claims take precedence.
 
         :param additional_headers:
@@ -518,29 +503,22 @@ def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = 
             :meth:`~flask_jwt_extended.JWTManager.additional_headers_loader` callback. On conflict, these headers take
             precedence.
 
-        :return:
-            An encoded refresh token
+        :return:  An encoded refresh token
     """
     jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.encode_jwt_from_config(
-        claims=additional_claims,
-        expires_delta=expires_delta,
-        fresh=False,
-        headers=additional_headers,
-        identity=identity,
-        token_type="refresh",
-    )
+    return jwt_man.encode_jwt_from_config(fresh=False,
+                                          identity=identity,
+                                          token_type="refresh",
+                                          claims=additional_claims,
+                                          headers=additional_headers,
+                                          expires_delta=expires_delta)
 
 
 def get_unverified_jwt_headers(encoded_token: str) -> dict:
     """
         Returns the Headers of an encoded JWT without verifying the signature of the JWT.
-
-        :param encoded_token:
-            The encoded JWT to get the Header from.
-
-        :return:
-            JWT header parameters as python dict()
+            :param encoded_token:  The encoded JWT to get the Header from.
+            :return:  JWT header parameters as python dict()
     """
     return jwt.get_unverified_header(encoded_token)
 
@@ -548,12 +526,8 @@ def get_unverified_jwt_headers(encoded_token: str) -> dict:
 def get_jti(encoded_token: str) -> Optional[str]:
     """
         Returns the JTI (unique identifier) of an encoded JWT
-
-        :param encoded_token:
-            The encoded JWT to get the JTI from.
-
-        :return:
-            The JTI (unique identifier) of a JWT, if it is present.
+            :param encoded_token:  The encoded JWT to get the JTI from.
+            :return:  The JTI (unique identifier) of a JWT, if it is present.
     """
     return decode_token(encoded_token).get("jti")
 
@@ -561,17 +535,14 @@ def get_jti(encoded_token: str) -> Optional[str]:
 def get_csrf_token(encoded_token: str) -> str:
     """
         Returns the CSRF double submit token from an encoded JWT.
-
-        :param encoded_token:
-            The encoded JWT
-
-        :return:
-            The CSRF double submit token (string)
+          :param encoded_token:  The encoded JWT
+          :return:  The CSRF double submit token (string)
     """
     token = decode_token(encoded_token, allow_expired=True)
     return token["csrf"]
 
-def _verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
+
+def verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
     fresh = jwt_data["fresh"]
     if isinstance(fresh, bool):
         if not fresh:

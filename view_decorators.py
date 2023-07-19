@@ -5,13 +5,13 @@ from .tokens import (process_and_handle_tokens, after_request)
 
 # TODO - protected decorator
 
-def jwt_sca(optional: bool = False, fresh: bool = False, refresh: bool = False, verify_type: bool = True,
+def jwt_sca(fresh: bool = False,
+            refresh: bool = False,
+            optional: bool = False,
+            verify_type: bool = True,
             skip_revocation_check: bool = False) -> Any:
     """
-        A decorator to protect a Flask endpoint with JSON Web Tokens.
-
-        Any route decorated with this will require a valid JWT to be present in the request (unless optional=True, in
-        which case no JWT is also valid) before the endpoint can be called.
+        A controller decorator used for setting the desired authorization behavior
 
         :param optional:
             If ``True``, allow the decorated endpoint to be accessed if no JWT is present in the request. Defaults to

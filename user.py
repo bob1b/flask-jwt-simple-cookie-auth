@@ -95,7 +95,7 @@ def create_user_access_token(user_obj,
                              replace=None,
                              access_token_model=None,
                              db=None):
-    method = f"User.create_access_token({user_obj})"
+    method = f"User.create_user_access_token({user_obj})"
 
     user_agent = None
     if request:
@@ -176,7 +176,7 @@ def get_current_user() -> Any:
 # def set_current_user_from_token_string(access_token_string=False):
 #     try:
 #         # jwt_man = jwt_manager.get_jwt_manager()
-#         jwt_dict = _decode_jwt(encoded_token=access_token_string)
+#         jwt_dict = decode_jwt(encoded_token=access_token_string)
 #     except (NoAuthorizationError, ExpiredSignatureError) as e:
 #         if type(e) == NoAuthorizationError and not optional:
 #             raise
