@@ -41,7 +41,7 @@ class JWTManager(object):
         # Register the default error handler callback methods. These can be overridden with the appropriate loader
         # decorators
         self.user_lookup_callback: Optional[Callable] = None
-        self._decode_key_callback = default_callbacks.default_decode_key_callback
+        self.decode_key_callback = default_callbacks.default_decode_key_callback
         self._encode_key_callback = default_callbacks.default_encode_key_callback
         self._unauthorized_callback = default_callbacks.default_unauthorized_callback
         self._expired_token_callback = default_callbacks.default_expired_token_callback
@@ -216,8 +216,9 @@ class JWTManager(object):
             The second argument is a dictionary containing the payload data of the unverified JWT.
             The decorated function must return a *string* that is used to decode and verify the token.
         """
-        self._decode_key_callback = callback
+        self.decode_key_callback = callback
         return callback
+
 
     def encode_key_loader(self, callback: Callable) -> Callable:
         """
@@ -410,34 +411,3 @@ class JWTManager(object):
             identity_claim_key=config.identity_claim_key,
             identity=self._user_identity_callback(identity),
         )
-
-    def decode_jwt_from_config(self, encoded_token: str, csrf_value=None, allow_expired: bool = False) -> dict:
-        unverified_claims = jwt.decode(
-            encoded_token,
-            algorithms=config.decode_algorithms,
-            options={"verify_signature": False},
-        )
-        unverified_headers = jwt.get_unverified_header(encoded_token)
-        secret = self._decode_key_callback(unverified_headers, unverified_claims)
-
-        kwargs = {
-            "secret": secret,
-            "leeway": config.leeway,
-            "csrf_value": csrf_value,
-            "encoded_token": encoded_token,
-            "issuer": config.decode_issuer,
-            "audience": config.decode_audience,
-            "algorithms": config.decode_algorithms,
-            "identity_claim_key": config.identity_claim_key,
-            "verify_aud": config.decode_audience is not None,
-        }
-
-        try:
-            return tokens.decode_jwt(**kwargs, allow_expired=allow_expired)
-        except ExpiredSignatureError as e:
-            # TODO: If we ever do another breaking change, don't raise this pyjwt error directly, instead raise a custom
-            #  error of ours from this error.
-            e.jwt_header = unverified_headers  # type: ignore
-            e.jwt_data = tokens.decode_jwt(**kwargs, allow_expired=True)  # type: ignore
-            if not allow_expired:
-                raise

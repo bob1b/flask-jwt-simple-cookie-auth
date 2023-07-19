@@ -176,18 +176,7 @@ def get_current_user() -> Any:
 # TODO - might not need this
 # def set_current_user_from_token_string(access_token_string=False):
 #     try:
-#         # jwt_man = jwt_manager.get_jwt_manager()
-#         jwt_dict = decode_jwt(encoded_token=access_token_string)
-#     except (NoAuthorizationError, ExpiredSignatureError) as e:
-#         if type(e) == NoAuthorizationError and not optional:
-#             raise
-#         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-#             raise
-#         g._jwt_extended_jwt = {}
-#         g._jwt_extended_jwt_header = {}
-#         g._jwt_extended_jwt_user = {"loaded_user": None}
-#         return None
-#
+
 #     g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
 #     g._jwt_extended_jwt_header = jwt_header
 #     g._jwt_extended_jwt = jwt_data

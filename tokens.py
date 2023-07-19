@@ -55,10 +55,8 @@ def process_and_handle_tokens(fresh: bool = False,
         return None
 
     try:
-        # TODO - which should be called first? decode_jwt_from_request or refresh_expiring_jwts() ?
-        jwt_data, jwt_header = decode_jwt_from_request(fresh=fresh, refresh=refresh, verify_type=verify_type,
-                                                       skip_revocation_check=skip_revocation_check)
-        refresh_expiring_jwts()
+        jwt_data, jwt_header = validate_request_jwt(fresh=fresh, refresh=refresh, verify_type=verify_type,
+                                                    skip_revocation_check=skip_revocation_check)
 
     except (exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
         if type(e) == exceptions.NoAuthorizationError and not optional:
@@ -79,44 +77,139 @@ def process_and_handle_tokens(fresh: bool = False,
     return jwt_header, jwt_data
 
 
-def find_access_token_by_string(encrypted_token: str, user_id: int, access_token_model: Any = None):
-    return access_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+def validate_request_jwt(
+    fresh: bool = False, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
+) -> Tuple[dict, dict]:
+
+    errors = []
+    decoded_token = None
+    try:
+        encoded_token, csrf_token = get_jwt_from_cookies(refresh) # this method checks "flask.g" before the cookies
+        decoded_token = decode_and_validate_token(encoded_token, csrf_token)
+        jwt_header = jwt.get_unverified_header(encoded_token)
+    except exceptions.NoAuthorizationError as e:
+        jwt_header = False
+        errors.append(str(e))
+
+    if not decoded_token:
+        err_msg = f"Missing JWT in cookies ({'; '.join(errors)})"
+        raise exceptions.NoAuthorizationError(err_msg)
+
+    # Additional verifications provided by this extension
+    if verify_type:
+        verify_token_type(decoded_token, refresh)
+
+    if fresh:
+        verify_token_is_fresh(jwt_header, decoded_token)
+
+    if not skip_revocation_check:
+        verify_token_not_blocklisted(jwt_header, decoded_token)
+
+    custom_verification_for_token(jwt_header, decoded_token)
+
+    return decoded_token, jwt_header
 
 
-def find_refresh_token_by_string(encrypted_token: str, user_id: int, refresh_token_model: Any = None):
-    return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
-
-
-def expires_in_seconds(token_obj: Any,
-                       access_token_model: Any = None,
-                       use_refresh_expiration_delta: bool = False) -> int:
-    """ TODO - probably want to allow external modules to set this method so it'll match its own token model. For
-               example, .token might not be the correct field name for every app """
-    token_data = decode_token(token_obj.token, allow_expired=True)
-    expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
-
-    if use_refresh_expiration_delta and type(token_obj) == access_token_model:
-        # TODO - use config values
-        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
-    return expires_in
-
-
-def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False) -> dict:
+def decode_and_validate_token(encoded_token: str, csrf_value: Optional[str] = None, allow_expired: bool = False,
+                              auto_refresh: bool = True) -> dict:
     """
+        Decode and validate token string
+
+
         Returns the decoded token (python dict) from an encoded JWT. This does all the checks to ensure that the decoded
         token is valid before returning it.
 
-        This will not fire the user loader callbacks, save the token for access in protected endpoints, checked if a
+        This will not fire the user loader callbacks, save the token for access in protected endpoints, check if a
         token is revoked, etc. This is purely used to ensure that a JWT is valid.
 
             :param encoded_token:  The encoded JWT to decode.
             :param csrf_value:  Expected CSRF double submit value (optional).
-            :param allow_expired:  If ``True``, do not raise an error if the JWT is expired.  Defaults to ``False``
+            :param auto_refresh:  if a token has expired, attempt to refresh (regenerate and save) it using the refresh
+                                  token
+            :param allow_expired:  If ``True``, do not raise an error if the JWT is expired. Use this when just checking
+                                   the expiration time, i.e. .expires_in_seconds()
             :return:  Dictionary containing the payload of the JWT decoded JWT.
-    """
-    jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.decode_jwt_from_config(encoded_token, csrf_value=csrf_value, allow_expired=allow_expired)
 
+
+    """
+
+    unverified_claims = jwt.decode(encoded_token,
+                                   algorithms=config.decode_algorithms,
+                                   options={"verify_signature": False})
+    unverified_headers = jwt.get_unverified_header(encoded_token)
+    secret =  jwt_manager.get_jwt_manager().decode_key_callback(unverified_headers, unverified_claims)
+
+    kwargs = {
+        "secret": secret,
+        "leeway": config.leeway,
+        "csrf_value": csrf_value,
+        "encoded_token": encoded_token,
+        "issuer": config.decode_issuer,
+        "audience": config.decode_audience,
+        "algorithms": config.decode_algorithms,
+        "identity_claim_key": config.identity_claim_key,
+        "verify_aud": config.decode_audience is not None,
+    }
+
+    try:
+        return validate_jwt(**kwargs, allow_expired=allow_expired)
+    except ExpiredSignatureError as e:
+        e.jwt_header = unverified_headers
+        if auto_refresh:
+            # TODO - refresh here
+            refresh_expiring_jwts()
+
+        # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
+        e.jwt_data = validate_jwt(**kwargs, allow_expired=True)
+        if not allow_expired:
+            raise
+
+
+def validate_jwt(algorithms: List,
+                 allow_expired: bool,
+                 audience: Union[str, Iterable[str]],
+                 csrf_value: str,
+                 encoded_token: str,
+                 identity_claim_key: str,
+                 issuer: str,
+                 leeway: int,
+                 secret: str,
+                 verify_aud: bool) -> dict:
+    """
+        Validate a token string using JWT package? Ensure there is an identity_claim and CSRF value in the decoded data.
+        Ensures that th CSRF value in the token data matches what was passed in to the method
+    """
+
+    options = {"verify_aud": verify_aud} # verify audience
+    if allow_expired:
+        options["verify_exp"] = False # verify expiration
+
+    # Verify the ext, iat, and nbf (not before) claims. This optionally verifies the expiration and audience claims
+    # if enabled. Exceptions are raised for invalid conditions, e.g. token expiration
+    decoded_token = jwt.decode(
+        encoded_token, secret, algorithms=algorithms, audience=audience, issuer=issuer, leeway=leeway, options=options
+    )
+
+    # Make sure that any custom claims we expect in the token are present
+    if identity_claim_key not in decoded_token:
+        raise exceptions.JWTDecodeError(f"Missing claim: {identity_claim_key}")
+
+    if "type" not in decoded_token:
+        decoded_token["type"] = "access"
+
+    if "fresh" not in decoded_token:
+        decoded_token["fresh"] = False
+
+    if "jti" not in decoded_token:
+        decoded_token["jti"] = None
+
+    if csrf_value:
+        if "csrf" not in decoded_token:
+            raise exceptions.JWTDecodeError("Missing claim: csrf")
+        if not compare_digest(decoded_token["csrf"], csrf_value):
+            raise exceptions.CSRFError("CSRF double submit tokens do not match")
+
+    return decoded_token
 
 def encode_jwt(algorithm: str,
                audience: Union[str, Iterable[str]],
@@ -166,48 +259,6 @@ def encode_jwt(algorithm: str,
     return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
 
 
-def decode_jwt(algorithms: List,
-                allow_expired: bool,
-                audience: Union[str, Iterable[str]],
-                csrf_value: str,
-                encoded_token: str,
-                identity_claim_key: str,
-                issuer: str,
-                leeway: int,
-                secret: str,
-                verify_aud: bool) -> dict:
-    options = {"verify_aud": verify_aud}
-    if allow_expired:
-        options["verify_exp"] = False
-
-    # This call verifies the ext, iat, and nbf claims
-    # This optionally verifies the exp and aud claims if enabled
-    decoded_token = jwt.decode(
-        encoded_token, secret, algorithms=algorithms, audience=audience, issuer=issuer, leeway=leeway, options=options
-    )
-
-    # Make sure that any custom claims we expect in the token are present
-    if identity_claim_key not in decoded_token:
-        raise exceptions.JWTDecodeError("Missing claim: {}".format(identity_claim_key))
-
-    if "type" not in decoded_token:
-        decoded_token["type"] = "access"
-
-    if "fresh" not in decoded_token:
-        decoded_token["fresh"] = False
-
-    if "jti" not in decoded_token:
-        decoded_token["jti"] = None
-
-    if csrf_value:
-        if "csrf" not in decoded_token:
-            raise exceptions.JWTDecodeError("Missing claim: csrf")
-        if not compare_digest(decoded_token["csrf"], csrf_value):
-            raise exceptions.CSRFError("CSRF double submit tokens do not match")
-
-    return decoded_token
-
-
 def access_token_has_expired():
     # TODO - probably will need to use jwt to check expiration, look for code raising ExpiredSignatureError
     # TODO - FILL THIS IN
@@ -216,6 +267,7 @@ def access_token_has_expired():
 
 def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
+    # TODO - refactor this
     method = f'refresh_expiring_jwts()'
 
     if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
@@ -227,7 +279,7 @@ def refresh_expiring_jwts(access_token_model=None, refresh_token_model=None):
     csrf_token = request.cookies.get('csrf_access_token')
 
     if access_token_has_expired(): # TODO - add new method
-        access_token_data = decode_token(enc_access_token, csrf_token, allow_expired=True)
+        access_token_data = decode_and_validate_token(enc_access_token, csrf_token, allow_expired=True)
         user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
     else:
         # token hasn't yet expired, get the info so that we can further check validity
@@ -309,7 +361,7 @@ def after_request(response):
     return response
 
 
-def decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
+def get_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     """
         Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or
         the access token was refreshed
@@ -342,59 +394,6 @@ def decode_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
         csrf_value = None
 
     return encoded_token, csrf_value
-
-
-def decode_jwt_from_request(
-    fresh: bool = False, refresh: bool = False, verify_type: bool = True, skip_revocation_check: bool = False
-) -> Tuple[dict, dict]:
-
-    errors = []
-    decoded_token = None
-    try:
-        encoded_token, csrf_token = decode_jwt_from_cookies(refresh) # this method checks "flask.g" before the cookies
-        decoded_token = decode_token(encoded_token, csrf_token)
-        jwt_header = get_unverified_jwt_headers(encoded_token)
-    except exceptions.NoAuthorizationError as e:
-        jwt_header = False
-        errors.append(str(e))
-
-    if not decoded_token:
-        err_msg = f"Missing JWT in cookies ({'; '.join(errors)})"
-        raise exceptions.NoAuthorizationError(err_msg)
-
-    # Additional verifications provided by this extension
-    if verify_type:
-        verify_token_type(decoded_token, refresh)
-
-    if fresh:
-        verify_token_is_fresh(jwt_header, decoded_token)
-
-    if not skip_revocation_check:
-        verify_token_not_blocklisted(jwt_header, decoded_token)
-
-    custom_verification_for_token(jwt_header, decoded_token)
-
-    return decoded_token, jwt_header
-
-
-def verify_token_type(decoded_token: dict, refresh: bool) -> None:
-    if not refresh and decoded_token["type"] == "refresh":
-        raise exceptions.WrongTokenError("Only non-refresh tokens are allowed")
-    elif refresh and decoded_token["type"] != "refresh":
-        raise exceptions.WrongTokenError("Only refresh tokens are allowed")
-
-
-def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
-    jwt_man = jwt_manager.get_jwt_manager()
-    if jwt_man.token_in_blocklist_callback(jwt_header, jwt_data):
-        raise exceptions.RevokedTokenError(jwt_header, jwt_data)
-
-
-def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
-    jwt_man = jwt_manager.get_jwt_manager()
-    if not jwt_man.token_verification_callback(jwt_header, jwt_data):
-        error_msg = "User claims verification failed"
-        raise exceptions.UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
 
 
 def get_jwt() -> dict:
@@ -440,6 +439,58 @@ def get_jwt_identity() -> Any:
     """
     return get_jwt().get(config.identity_claim_key, None)
 
+
+def get_csrf_token(encoded_token: str) -> str:
+    """
+        Returns the CSRF double submit token from an encoded JWT.
+          :param encoded_token:  The encoded JWT
+          :return:  The CSRF double submit token (string)
+    """
+    token = decode_and_validate_token(encoded_token, allow_expired=True)
+    return token["csrf"]
+
+
+
+def find_access_token_by_string(encrypted_token: str, user_id: int, access_token_model: Any = None):
+    return access_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+
+
+def find_refresh_token_by_string(encrypted_token: str, user_id: int, refresh_token_model: Any = None):
+    return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
+
+
+def expires_in_seconds(token_obj: Any,
+                       access_token_model: Any = None,
+                       use_refresh_expiration_delta: bool = False) -> int:
+    """ TODO - probably want to allow external modules to set this method so it'll match its own token model. For
+               example, .token might not be the correct field name for every app """
+    token_data = decode_and_validate_token(token_obj.token, allow_expired=True)
+    expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
+
+    if use_refresh_expiration_delta and type(token_obj) == access_token_model:
+        # TODO - use config values
+        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
+    return expires_in
+
+
+def verify_token_type(decoded_token: dict, refresh: bool) -> None:
+    if not refresh and decoded_token["type"] == "refresh":
+        raise exceptions.WrongTokenError("Only non-refresh tokens are allowed")
+    elif refresh and decoded_token["type"] != "refresh":
+        raise exceptions.WrongTokenError("Only refresh tokens are allowed")
+
+
+def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
+    jwt_man = jwt_manager.get_jwt_manager()
+    if jwt_man.token_in_blocklist_callback(jwt_header, jwt_data):
+        raise exceptions.RevokedTokenError(jwt_header, jwt_data)
+
+
+def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
+    jwt_man = jwt_manager.get_jwt_manager()
+    if not jwt_man.token_verification_callback(jwt_header, jwt_data):
+        error_msg = "User claims verification failed"
+        raise exceptions.UserClaimsVerificationError(error_msg, jwt_header, jwt_data)
 
 
 def create_access_token(identity: Any,
@@ -519,34 +570,6 @@ def create_refresh_token(identity: Any, expires_delta: Optional[ExpiresDelta] = 
                                           expires_delta=expires_delta)
 
 
-def get_unverified_jwt_headers(encoded_token: str) -> dict:
-    """
-        Returns the Headers of an encoded JWT without verifying the signature of the JWT.
-            :param encoded_token:  The encoded JWT to get the Header from.
-            :return:  JWT header parameters as python dict()
-    """
-    return jwt.get_unverified_header(encoded_token)
-
-
-def get_jti(encoded_token: str) -> Optional[str]:
-    """
-        Returns the JTI (unique identifier) of an encoded JWT
-            :param encoded_token:  The encoded JWT to get the JTI from.
-            :return:  The JTI (unique identifier) of a JWT, if it is present.
-    """
-    return decode_token(encoded_token).get("jti")
-
-
-def get_csrf_token(encoded_token: str) -> str:
-    """
-        Returns the CSRF double submit token from an encoded JWT.
-          :param encoded_token:  The encoded JWT
-          :return:  The CSRF double submit token (string)
-    """
-    token = decode_token(encoded_token, allow_expired=True)
-    return token["csrf"]
-
-
 def verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
     fresh = jwt_data["fresh"]
     if isinstance(fresh, bool):
@@ -556,3 +579,21 @@ def verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
         now = datetime.timestamp(datetime.now(timezone.utc))
         if fresh < now:
             raise exceptions.FreshTokenRequired("Fresh token required", jwt_header, jwt_data)
+
+
+# def get_unverified_jwt_headers(encoded_token: str) -> dict:
+#     """
+#         Returns the Headers of an encoded JWT without verifying the signature of the JWT.
+#             :param encoded_token:  The encoded JWT to get the Header from.
+#             :return:  JWT header parameters as python dict()
+#     """
+#     return jwt.get_unverified_header(encoded_token)
+
+
+# def get_jti(encoded_token: str) -> Optional[str]:
+#     """
+#         Returns the JTI (unique identifier) of an encoded JWT
+#             :param encoded_token:  The encoded JWT from which to get the JTI
+#             :return:  return the unique identifier (JTI) of a JWT, if it is present
+#     """
+#     return decode_and_validate_token(encoded_token).get("jti")
