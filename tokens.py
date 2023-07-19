@@ -79,20 +79,25 @@ def process_and_handle_tokens(fresh: bool = False,
     return jwt_header, jwt_data
 
 
-def find_access_token_by_string(encrypted_token, user_id, access_token_model=None):
+def find_access_token_by_string(encrypted_token: str, user_id: int, access_token_model: Any = None):
     return access_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
 
 
-def find_refresh_token_by_string(encrypted_token, user_id, refresh_token_model=None):
+def find_refresh_token_by_string(encrypted_token: str, user_id: int, refresh_token_model: Any = None):
     return refresh_token_model.query.filter_by(token=encrypted_token, user_id=user_id).one_or_none()
 
 
-def expires_in_seconds(token_obj): # , use_refresh_expiration_delta=False):
+def expires_in_seconds(token_obj: Any,
+                       access_token_model: Any = None,
+                       use_refresh_expiration_delta: bool = False) -> int:
+    """ TODO - probably want to allow external modules to set this method so it'll match its own token model. For
+               example, .token might not be the correct field name for every app """
     token_data = decode_token(token_obj.token, allow_expired=True)
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
-    # if use_refresh_expiration_delta and type(self) == AccessToken: # TODO
-    #     expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
+    if use_refresh_expiration_delta and type(token_obj) == access_token_model:
+        # TODO - use config values
+        expires_in = expires_in - timedelta(hours=1).total_seconds() + timedelta(days=30).total_seconds()
     return expires_in
 
 
@@ -110,23 +115,23 @@ def decode_token(encoded_token: str, csrf_value: Optional[str] = None, allow_exp
             :return:  Dictionary containing the payload of the JWT decoded JWT.
     """
     jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.decode_jwt_from_config(encoded_token, csrf_value, allow_expired)
+    return jwt_man.decode_jwt_from_config(encoded_token, csrf_value=csrf_value, allow_expired=allow_expired)
 
 
 def encode_jwt(algorithm: str,
-                audience: Union[str, Iterable[str]],
-                claim_overrides: dict,
-                csrf: bool,
-                expires_delta: ExpiresDelta,
-                fresh: Fresh,
-                header_overrides: dict,
-                identity: Any,
-                identity_claim_key: str,
-                issuer: str,
-                json_encoder: Type[JSONEncoder],
-                secret: str,
-                token_type: str,
-                nbf: bool) -> str:
+               audience: Union[str, Iterable[str]],
+               claim_overrides: dict,
+               csrf: bool,
+               expires_delta: ExpiresDelta,
+               fresh: Fresh,
+               header_overrides: dict,
+               identity: Any,
+               identity_claim_key: str,
+               issuer: str,
+               json_encoder: Type[JSONEncoder],
+               secret: str,
+               token_type: str,
+               nbf: bool) -> str:
     now = datetime.now(timezone.utc)
 
     if isinstance(fresh, timedelta):

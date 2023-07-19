@@ -65,8 +65,9 @@ def logout_user(user_obj, access_token_model=None, refresh_token_model=None, log
 
 def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_model=None, db=None):
     """
-        Remove expired tokens for this user. Even though Access Tokens expire relatively quickly compared to
-          Refresh Tokens, only consider tokens to be expired if they are older than the Refresh Token expiration.
+        Remove expired access and refresh tokens for this user. Access Tokens expire in a shorter amount of time than
+          Refresh Tokens, but Access Tokens can be refreshed. So, only consider Access tokens to be expired if they
+          are older than the Refresh Token expiration.
 
         Otherwise, we might end up deleting still in-use Access Tokens if the user has multiple sessions of the same
           login across multiple devices
@@ -76,25 +77,26 @@ def remove_user_expired_tokens(user_obj, access_token_model=None, refresh_token_
     removed_refresh_count = 0
     user_tokens = access_token_model.query.filter_by(user_id=user_obj.id).all() + \
                   refresh_token_model.query.filter_by(user_id=user_obj.id).all()
-    for token in user_tokens:
-        expires_in_seconds = tokens.expires_in_seconds(token, use_refresh_expiration_delta=True)
+    for token_obj in user_tokens:
+        expires_in_seconds = tokens.expires_in_seconds(token_obj, access_token_model=access_token_model,
+                                                       use_refresh_expiration_delta=True)
         if int(expires_in_seconds) < 0:
-            if type(token) == access_token_model:
+            if type(token_obj) == access_token_model:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
                 removed_refresh_count = removed_refresh_count + 1
-            db.session.delete(token)
+            db.session.delete(token_obj)
     db.session.commit()
     _logger.info(f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' +
                  'refresh tokens')
 
 
 def create_user_access_token(user_obj,
+                             db=None,
                              fresh=False,
-                             expires_delta=timedelta(minutes=15),
                              replace=None,
                              access_token_model=None,
-                             db=None):
+                             expires_delta=timedelta(minutes=15)):
     method = f"User.create_user_access_token({user_obj})"
 
     user_agent = None
@@ -102,7 +104,6 @@ def create_user_access_token(user_obj,
         user_agent = request.headers.get("User-Agent")
 
     access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh) # set JWT access cookie (includes CSRF)
-    # create_access_token(request=request, fresh=timedelta(minutes=15))
     _logger.info(f"{method}: Created new access_token = {access_token}")
 
     if replace and type(replace) == access_token_model:

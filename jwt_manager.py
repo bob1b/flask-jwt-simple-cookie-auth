@@ -37,8 +37,9 @@ class JWTManager(object):
             :param add_context_processor:
                 Controls if `current_user` should be added to flasks template context (and thus be available for use in
                 Jinja templates). Defaults to ``False``. """
-        # Register the default error handler callback methods. These can be
-        # overridden with the appropriate loader decorators
+
+        # Register the default error handler callback methods. These can be overridden with the appropriate loader
+        # decorators
         self.user_lookup_callback: Optional[Callable] = None
         self._decode_key_callback = default_callbacks.default_decode_key_callback
         self._encode_key_callback = default_callbacks.default_encode_key_callback
@@ -394,20 +395,20 @@ class JWTManager(object):
                 expires_delta = config.refresh_expires
 
         return tokens.encode_jwt(
-            algorithm=config.algorithm,
-            audience=config.encode_audience,
-            claim_overrides=claim_overrides,
-            csrf=config.csrf_protect,
-            expires_delta=expires_delta,
             fresh=fresh,
-            header_overrides=header_overrides,
-            identity=self._user_identity_callback(identity),
-            identity_claim_key=config.identity_claim_key,
-            issuer=config.encode_issuer,
-            json_encoder=config.json_encoder,
-            secret=self._encode_key_callback(identity),
             token_type=token_type,
             nbf=config.encode_nbf,
+            csrf=config.csrf_protect,
+            algorithm=config.algorithm,
+            expires_delta=expires_delta,
+            issuer=config.encode_issuer,
+            audience=config.encode_audience,
+            claim_overrides=claim_overrides,
+            header_overrides=header_overrides,
+            json_encoder=config.json_encoder,
+            secret=self._encode_key_callback(identity),
+            identity_claim_key=config.identity_claim_key,
+            identity=self._user_identity_callback(identity),
         )
 
     def decode_jwt_from_config(self, encoded_token: str, csrf_value=None, allow_expired: bool = False) -> dict:
@@ -420,14 +421,14 @@ class JWTManager(object):
         secret = self._decode_key_callback(unverified_headers, unverified_claims)
 
         kwargs = {
-            "algorithms": config.decode_algorithms,
-            "audience": config.decode_audience,
+            "secret": secret,
+            "leeway": config.leeway,
             "csrf_value": csrf_value,
             "encoded_token": encoded_token,
-            "identity_claim_key": config.identity_claim_key,
             "issuer": config.decode_issuer,
-            "leeway": config.leeway,
-            "secret": secret,
+            "audience": config.decode_audience,
+            "algorithms": config.decode_algorithms,
+            "identity_claim_key": config.identity_claim_key,
             "verify_aud": config.decode_audience is not None,
         }
 
