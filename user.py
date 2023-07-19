@@ -80,8 +80,11 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
     removed_refresh_count = 0
     user_tokens = access_token_class.query.filter_by(user_id=user_obj.id).all() + \
                   refresh_token_class.query.filter_by(user_id=user_obj.id).all()
+
     for token_obj in user_tokens:
-        expires_in_seconds = tokens.expires_in_seconds(token_obj, access_token_class=access_token_class,
+        # check if this token is not refreshable
+        expires_in_seconds = tokens.expires_in_seconds(token_obj,
+                                                       token_class=access_token_class,
                                                        use_refresh_expiration_delta=True)
         if int(expires_in_seconds) < 0:
             if type(token_obj) == access_token_class:
@@ -89,15 +92,16 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
             else: # refresh token
                 removed_refresh_count = removed_refresh_count + 1
             db.session.delete(token_obj)
-    db.session.commit()
-    _logger.info(f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' +
-                 'refresh tokens')
+    if removed_access_count + removed_refresh_count > 0:
+        db.session.commit()
+        _logger.info(f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' +
+                     'refresh tokens')
 
 
 def create_or_update_user_access_token(user_obj,
                                        db=None,
                                        fresh=False,
-                                       update=None,
+                                       update_existing=None,
                                        access_token_class=None,
                                        expires_delta=timedelta(minutes=15)):
     method = f"User.create_user_access_token({user_obj})"
@@ -108,12 +112,13 @@ def create_or_update_user_access_token(user_obj,
 
     # create token and set JWT access cookie (includes CSRF)
     access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh, expires_delta=expires_delta)
-    _logger.info(f"{method}: Created new access_token = {access_token}")
 
-    if update and type(update) == access_token_class:
-        update.token = access_token
-        update.user_agent = user_agent
+    if update_existing and type(update_existing) == access_token_class:
+        _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = {access_token}")
+        update_existing.token = access_token
+        update_existing.user_agent = user_agent
     else:
+        _logger.info(f"{method}: Created new access_token = {access_token}")
         access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
         db.session.add(access_token_obj)
     db.session.commit()

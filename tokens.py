@@ -114,7 +114,6 @@ def decode_and_validate_token(encoded_token: str, csrf_value: Optional[str] = No
     """
         Decode and validate token string
 
-
         Returns the decoded token (python dict) from an encoded JWT. This does all the checks to ensure that the decoded
         token is valid before returning it.
 
@@ -128,8 +127,6 @@ def decode_and_validate_token(encoded_token: str, csrf_value: Optional[str] = No
             :param allow_expired:  If ``True``, do not raise an error if the JWT is expired. Use this when just checking
                                    the expiration time, i.e. .expires_in_seconds()
             :return:  Dictionary containing the payload of the JWT decoded JWT.
-
-
     """
 
     unverified_claims = jwt.decode(encoded_token,
@@ -302,16 +299,31 @@ def access_token_has_expired(token_obj: Any,
                              use_refresh_expiration_delta: bool = False) -> bool:
     try:
         expires_in = expires_in_seconds(token_obj,
-                                        access_token_class=access_token_class,
+                                        token_class=access_token_class,
                                         use_refresh_expiration_delta=use_refresh_expiration_delta)
         return expires_in <= 0
     except ExpiredSignatureError as e:
         return True
 
 
-def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None):
+def refresh_token_has_expired(token_obj: Any,
+                              refresh_token_class: Any = None) -> bool:
+    try:
+        expires_in = expires_in_seconds(token_obj, token_class=refresh_token_class)
+        return expires_in <= 0
+    except ExpiredSignatureError as e:
+        return True
+
+
+def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=None, user_class=None):
     """ Refresh access tokens for this request that will be expiring soon OR already have expired """
+
+    # We need a valid expired token (which is present in the Access Token table) in order to generate a new
+    #   access token for this user session
+    # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
+
     # TODO - refactor this
+
     method = f'refresh_expiring_jwts()'
 
     if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
@@ -322,70 +334,83 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None):
     enc_refresh_token = request.cookies.get('refresh_token_cookie')
     csrf_token = request.cookies.get('csrf_access_token')
 
-    if access_token_has_expired(): # TODO - add new method
-        access_token_data = decode_and_validate_token(enc_access_token, csrf_token, allow_expired=True)
-        user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
-    else:
-        # token hasn't yet expired, get the info so that we can further check validity
-        access_token_data = get_jwt()
-        user_id = get_jwt_identity()
+    if not enc_access_token or not enc_refresh_token or not csrf_token:
+        print(f"missing token: {enc_access_token}, {enc_refresh_token} {csrf_token}")
+        g.unset_tokens = True
+        return
+
+    user_id = user.get_current_user()
+    if not user_id:
+        print("user not logged in")
+        g.unset_tokens = True
+        return
+
+    user_obj = user_class.query.get(user_id)
+    if not user_obj:
+        _logger.error(f'{method}: could not find user object for cookie user id #{user_id}')
+        g.unset_tokens = True
+        return
+
+
+    access_token_obj = find_access_token_by_string(user_id, enc_access_token, access_token_class=access_token_class)
+    refresh_token_obj = find_refresh_token_by_string(user_id, enc_refresh_token, refresh_token_class=refresh_token_class)
+
+    if not access_token_obj:
+        _logger.warning(
+            f'{method}: no ACCESS TOKEN matching cookie. Cannot determine expiration nor refresh, user_id = {user_id}')
+        g.unset_tokens = True
+        return
+
+    if not refresh_token_obj:
+        _logger.warning(
+            f'{method}: no REFRESH TOKEN matching cookie. Cannot refresh, user_id = {user_id}')
+        g.unset_tokens = True
+        return
+
+    if not access_token_has_expired(access_token_obj, access_token_class=access_token_class):
+        return
+
+    # token hasn't yet expired, get the info so that we can further check validity
+    access_token_data = decode_and_validate_token(enc_access_token, csrf_token, allow_expired=True)
+    user_id = access_token_data.get(config.get('JWT_IDENTITY_CLAIM'))
+    expired_access_token = access_token_obj
 
     # user is not logged in, nothing to do
     if not access_token_data:
+        g.unset_tokens = True
+        return
+
+    # TODO - token_is_refreshable()
+    # check if token cannot be refreshed (it is older than the refresh token)
+    if access_token_has_expired(access_token_obj, access_token_class=access_token_class, use_refresh_expiration_delta=True):
+        _logger.info(f'{method}: user #{user_id} access token cannot be refreshed because it is older than the ' +
+                     'refresh token expiration')
+        g.unset_tokens = True
+        return
+
+    if refresh_token_has_expired(refresh_token_obj, refresh_token_class=refresh_token_class):
+        _logger.info(f'{method}: user #{user_id} refresh token has expired. Access token cannot be refreshed')
+        g.unset_tokens = True
         return
 
 # TODO - check rest of below logic
 
-    # We need a valid expired token (which is present in the Access Token table) in order to generate a new
-    #   access token for this user session
-    # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
-
-    # TODO
-    access_token = find_access_token_by_string(enc_access_token, user_id, access_token_class=access_token_class) # expired is ok
-    refresh_token = find_refresh_token_by_string(enc_refresh_token, user_id, refresh_token_class=refresh_token_class)
-
-    if not access_token:
-        _logger.warning(f'{method}: no ACCESS TOKEN. Cannot determine expiration nor refresh, user_id = {user_id}\n ' +
-                        enc_access_token)
-        return
-
-    # found unexpired access token - no need to refresh
-    if access_token and expires_in_seconds(access_token) > 0:
-        return
-
-    # access token has expired
-    expired_access_token = access_token
-    access_token_expires_in_seconds = expires_in_seconds(expired_access_token)
-    refresh_token_expires_in_seconds = expires_in_seconds(refresh_token)
-
-    # catch instances when we cannot refresh the access token
-    if not expired_access_token or not refresh_token or refresh_token_expires_in_seconds < 0:
-        g.unset_tokens = True
-        # TODO - update current_user
-        if not expired_access_token:
-            _logger.warning(f'{method}: missing ACCESS TOKEN. Cannot grant new token')
-        elif not refresh_token:
-            _logger.warning(f'{method}: missing REFRESH TOKEN. Cannot grant new token')
-        else: # no refresh token expired
-            _logger.warning(f'{method}: expired REFRESH TOKEN. {-1 * refresh_token_expires_in_seconds} seconds ' +
-                            'since access token expiration. Cannot grant new token')
-        return
-
     # refresh the access token
-    user = User.query.get(user_id)  # TODO
-    _logger.info(f'{method}: user #{user.id} {-1 * access_token_expires_in_seconds} seconds since access ' +
+    _logger.info(f'{method}: user #{user_id} {-1 * expires_in_seconds(expired_access_token)} seconds since access ' +
                  f"'token expiration. Refreshing access token ...")
 
     # TODO - is this the correct method to call here?
     access_token = user.create_or_update_user_access_token(user, db=db, access_token_class=access_token_class,
-                                                           update=expired_access_token)
+                                                           update_existing=expired_access_token)
     g.unset_tokens = False
     g.new_access_token = access_token
 
-    modified_cookies = request.cookies.copy()
-    modified_cookies['access_token_cookie'] = access_token
-    request.cookies = modified_cookies
     # TODO - update current_user - XXX this might be causing the CSRF issue?
+    # TODO - do we need this?
+    # user.update_current_user()
+    jwt_data, jwt_header = validate_request_jwt()
+    user.update_current_user(jwt_header, jwt_data)
+
 
 
 def after_request(response):
@@ -444,12 +469,10 @@ def get_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
 
 def get_jwt() -> dict:
     """
-        In a protected endpoint, this will return the python dictionary which has the payload of the JWT that is
-        accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
-        returned.
+        This will return the python dict containing JWT payload of the client accessing the endpoint. If no JWT is
+        present due to ``jwt_sca(optional=True)``, an empty dict is returned.
             :return:  The payload (claims) of the JWT in the current request
     """
-
     decoded_jwt = g.get("_jwt_extended_jwt", None)
     if decoded_jwt is None:
         process_and_handle_tokens(optional=True, no_exception_on_expired=True)
@@ -518,7 +541,7 @@ def find_refresh_token_by_string(user_id: int,
 
 
 def expires_in_seconds(token_obj: Any,
-                       access_token_class: Any = None,
+                       token_class: Any = None,
                        use_refresh_expiration_delta: bool = False) -> int:
     """
         token_obj: a Token model (ie. Sqlalchemy) object
@@ -530,7 +553,7 @@ def expires_in_seconds(token_obj: Any,
     expires_in = token_data["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
-    if use_refresh_expiration_delta and type(token_obj) == access_token_class:
+    if use_refresh_expiration_delta and type(token_obj) == token_class:
         # Adjust the expiration time from access delta to refresh delta
         expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
     return expires_in
@@ -649,10 +672,11 @@ def verify_token_is_fresh(jwt_header: dict, jwt_data: dict) -> None:
 #     return jwt.get_unverified_header(encoded_token)
 
 
-# def get_jti(encoded_token: str) -> Optional[str]:
-#     """
-#         Returns the JTI (unique identifier) of an encoded JWT
-#             :param encoded_token:  The encoded JWT from which to get the JTI
-#             :return:  return the unique identifier (JTI) of a JWT, if it is present
-#     """
-#     return decode_and_validate_token(encoded_token).get("jti")
+def get_user_id_from_token(encoded_token: str = None, decoded_token_dict: dict = None) -> Optional[str]:
+    """
+        Returns the JTI (unique identifier)
+            :param encoded_token:  The encoded JWT from which to get the JTI (optional)
+            :param decoded_token_dict:  Dict from a previously decoded token string (optional
+            :return:  return the unique identifier (JTI) of a JWT, if it is present
+    """
+    return decode_and_validate_token(encoded_token).get("jti")
