@@ -35,7 +35,7 @@ def process_and_handle_tokens(fresh: bool = False,
         :param fresh:
             If ``True``, require a JWT marked as ``fresh`` in order to be verified. Defaults to ``False``.
 
-        :param refresh:
+        :param refresh:  # TODO - check if this is needed
             If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access JWT to access
             this endpoint. Defaults to ``False``
 
@@ -152,7 +152,6 @@ def decode_and_validate_token(encoded_token: str, csrf_value: Optional[str] = No
     except ExpiredSignatureError as e:
         e.jwt_header = unverified_headers
         if auto_refresh:
-            # TODO - refresh here
             refresh_expiring_jwts()
 
         # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
@@ -172,8 +171,8 @@ def validate_jwt(algorithms: List,
                  secret: str,
                  verify_aud: bool) -> dict:
     """
-        Validate a token string using JWT package? Ensure there is an identity_claim and CSRF value in the decoded data.
-        Ensures that th CSRF value in the token data matches what was passed in to the method
+        Validate a token string using JWT package decode(). Ensure there is an identity_claim and CSRF value in the
+        decoded data. Ensures that the CSRF value in the token data matches what was passed in to the method
     """
 
     options = {"verify_aud": verify_aud} # verify audience
@@ -316,14 +315,15 @@ def refresh_token_has_expired(token_obj: Any,
 
 
 def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=None, user_class=None):
-    """ Refresh access tokens for this request that will be expiring soon OR already have expired """
+    """
+        Refresh access token for this request/session if it has expired
 
-    # We need a valid expired token (which is present in the Access Token table) in order to generate a new
-    #   access token for this user session
-    # Also, we need an unexpired refresh token or else we cannot grant a new access token to the user
+        In order to refresh access tokens:
+            - we need a valid expired token which is also present in the Access Token table
+            - we need an unexpired refresh token
 
-    # TODO - refactor this
-
+        If the access token cannot be refreshed, both access and refresh tokens are unset
+    """
     method = f'refresh_expiring_jwts()'
 
     if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
@@ -339,7 +339,7 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         g.unset_tokens = True
         return
 
-    user_id = user.get_current_user()
+    user_id = get_jwt_identity()
     if not user_id:
         print("user not logged in")
         g.unset_tokens = True
@@ -393,8 +393,6 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         g.unset_tokens = True
         return
 
-# TODO - check rest of below logic
-
     # refresh the access token
     _logger.info(f'{method}: user #{user_id} {-1 * expires_in_seconds(expired_access_token)} seconds since access ' +
                  f"'token expiration. Refreshing access token ...")
@@ -412,10 +410,9 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
     user.update_current_user(jwt_header, jwt_data)
 
 
-
 def after_request(response):
-
-    # Set the new access token as a response cookie
+    """ Set the new access token as a response cookie """
+    print("*** after_request() ***")
     if hasattr(g, "new_access_token"):
         _logger.info(f"g.new_access_token = {g.new_access_token} ***")
         utils.set_access_cookies(response, g.new_access_token)
@@ -435,7 +432,7 @@ def after_request(response):
 def get_jwt_from_cookies(refresh: bool) -> Tuple[str, Optional[str]]:
     """
         Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or
-        the access token was refreshed
+        the access token was refreshed. Exceptions are raised for missing authorization or CSRF
     """
 
     if hasattr(g, 'unset_tokens') and g.unset_tokens:

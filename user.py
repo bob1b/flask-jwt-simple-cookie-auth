@@ -104,21 +104,24 @@ def create_or_update_user_access_token(user_obj,
                                        update_existing=None,
                                        access_token_class=None,
                                        expires_delta=timedelta(minutes=15)):
+    """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
 
     user_agent = None
     if request:
         user_agent = request.headers.get("User-Agent")
 
-    # create token and set JWT access cookie (includes CSRF)
     access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh, expires_delta=expires_delta)
+    g.unset_tokens = False
+    g.new_access_token = access_token
 
     if update_existing and type(update_existing) == access_token_class:
-        _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = {access_token}")
+        _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = " +
+                     utils.shorten(access_token, 40))
         update_existing.token = access_token
         update_existing.user_agent = user_agent
     else:
-        _logger.info(f"{method}: Created new access_token = {access_token}")
+        _logger.info(f"{method}: Created new access_token = {utils.shorten(access_token, 40)}")
         access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
         db.session.add(access_token_obj)
     db.session.commit()
@@ -126,8 +129,13 @@ def create_or_update_user_access_token(user_obj,
 
 
 def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refresh_token_class=None, db=None):
-    # create token and set JWT refresh cookie
+    """ create token and set JWT refresh cookie """
+    method = f"User.create_user_refresh_token({user_obj})"
     refresh_token = tokens.create_refresh_token(identity=user_obj.id, expires_delta=expires_delta)
+    g.unset_tokens = False
+    g.new_access_token = refresh_token
+
+    _logger.info(f"{method}: Created new refresh_token = {utils.shorten(refresh_token, 40)}")
     refresh_token_obj = refresh_token_class(token=refresh_token, user_id=user_obj.id)
     db.session.add(refresh_token_obj)
     db.session.commit()
