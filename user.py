@@ -142,6 +142,19 @@ def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refres
     return refresh_token
 
 
+def set_no_user():
+    g._jwt_extended_jwt = {}
+    g._jwt_extended_jwt_header = {}
+    g._jwt_extended_jwt_user = {"loaded_user": None}
+
+
+# TODO - test this well
+def set_current_user(jwt_header, jwt_data):
+    g._jwt_extended_jwt = jwt_data
+    g._jwt_extended_jwt_header = jwt_header
+    g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
+
+
 def load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
     if not has_user_lookup():
         return None
@@ -187,13 +200,6 @@ def get_current_user() -> Any:
     if jwt_user_dict is None:
         raise RuntimeError("You must provide a `@jwt.user_lookup_loader` callback to use this method")
     return jwt_user_dict["loaded_user"]
-
-
-# TODO - test this well
-def update_current_user(jwt_header, jwt_data):
-    g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
-    g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt = jwt_data
 
 
 def current_user_context_processor() -> Any:

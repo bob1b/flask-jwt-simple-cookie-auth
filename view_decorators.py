@@ -35,7 +35,7 @@ def jwt_sca(fresh: bool = False,
 
             # token auto-refreshing and validation
             process_and_handle_tokens(optional=optional, fresh=fresh, refresh=refresh, verify_type=verify_type,
-                                      skip_revocation_check=skip_revocation_check)
+                                      skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
 
             # run the controller
             response = current_app.ensure_sync(fn)(*args, **kwargs)
