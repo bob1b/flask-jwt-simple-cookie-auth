@@ -1,5 +1,6 @@
-import datetime
 import jwt
+import logging
+import datetime
 from typing import (Any, Callable, Optional)
 from flask import Flask, current_app
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
@@ -12,14 +13,16 @@ from . import default_callbacks
 from .config import config
 from .typing import (ExpiresDelta, Fresh)
 
+_logger = logging.getLogger(__name__)
+
 
 def get_jwt_manager() -> "JWTManager":
     try:
         return current_app.extensions["flask-jwt-simple-cookie-auth"]
     except KeyError:  # pragma: no cover
-        raise RuntimeError(
-            "You must initialize a JWTManager with this flask application before using this method"
-        ) from None
+        message = "You must initialize a JWTManager with this flask application before using this method"
+        _logger.error(message)
+        raise RuntimeError(message) from None
 
 
 class JWTManager(object):

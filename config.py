@@ -122,9 +122,8 @@ class _Config(object):
                 # Basically runtime typechecking. Probably a better way to do this with proper type checking
                 delta + datetime.now(timezone.utc)
             except TypeError as e:
-                err = (
-                    "must be able to add JWT_ACCESS_TOKEN_EXPIRES to datetime.datetime"
-                )
+                err = "must be able to add JWT_ACCESS_TOKEN_EXPIRES to datetime.datetime"
+                _logger.error(err)
                 raise RuntimeError(err) from e
         return delta
 
@@ -138,9 +137,8 @@ class _Config(object):
             try:
                 delta + datetime.now(timezone.utc)
             except TypeError as e:
-                err = (
-                    "must be able to add JWT_REFRESH_TOKEN_EXPIRES to datetime.datetime"
-                )
+                err = "must be able to add JWT_REFRESH_TOKEN_EXPIRES to datetime.datetime"
+                _logger.error(err)
                 raise RuntimeError(err) from e
         return delta
 
@@ -163,27 +161,27 @@ class _Config(object):
         if not key:
             key = current_app.config.get("SECRET_KEY", None)
             if not key:
-                raise RuntimeError(
-                    f"JWT_SECRET_KEY or flask SECRET_KEY must be set when using symmetric algorithm '{self.algorithm}'"
-                )
+                err = f"JWT_SECRET_KEY or flask SECRET_KEY must be set when using symmetric algorithm " + \
+                      f"'{self.algorithm}'"
+                raise RuntimeError(err)
         return key
 
     @property
     def _public_key(self) -> str:
         key = current_app.config["JWT_PUBLIC_KEY"]
         if not key:
-            raise RuntimeError(
-                f"JWT_PUBLIC_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
-            )
+            err = f"JWT_PUBLIC_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
+            _logger.error(err)
+            raise RuntimeError(err)
         return key
 
     @property
     def _private_key(self) -> str:
         key = current_app.config["JWT_PRIVATE_KEY"]
         if not key:
-            raise RuntimeError(
-                f"JWT_PRIVATE_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
-            )
+            err = f"JWT_PRIVATE_KEY must be set to use asymmetric cryptography algorithm '{self.algorithm}'"
+            _logger.error(err)
+            raise RuntimeError(err)
         return key
 
     @property

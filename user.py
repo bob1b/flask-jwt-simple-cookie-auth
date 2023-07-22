@@ -21,7 +21,9 @@ def login_user(user_obj, access_token_class=None, refresh_token_class=None, db=N
     # create cookies and save in 'g' so they will be applied to the response
     g.new_access_token = create_or_update_user_access_token(user_obj, access_token_class=access_token_class, db=db)
     g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_class=refresh_token_class, db=db)
-    remove_user_expired_tokens(user_obj, access_token_class=access_token_class, refresh_token_class=refresh_token_class,
+
+    # remove tokens for this user that are completely expired (non-refreshable)
+    remove_user_expired_tokens(user_obj,access_token_class=access_token_class, refresh_token_class=refresh_token_class,
                                db=db)
 
 
@@ -31,6 +33,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
         user_tokens = []
 
+        # invalidate access token
         access_cookie_value = utils.get_access_cookie_value()
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
@@ -44,6 +47,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
             else:
                 user_tokens = user_tokens + found_access_tokens
 
+        # invalidate refresh token
         refresh_cookie_value = utils.get_refresh_cookie_value()
         if not refresh_cookie_value:
             _logger.warning(
@@ -76,6 +80,7 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
           login across multiple devices
     """
     method = f'remove_expired_tokens(user #{user_obj.id} ({user_obj.email}))'
+
     removed_access_count = 0
     removed_refresh_count = 0
     user_tokens = access_token_class.query.filter_by(user_id=user_obj.id).all() + \
@@ -133,7 +138,7 @@ def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refres
     method = f"User.create_user_refresh_token({user_obj})"
     refresh_token = tokens.create_refresh_token(identity=user_obj.id, expires_delta=expires_delta)
     g.unset_tokens = False
-    g.new_access_token = refresh_token
+    g.new_refresh_token = refresh_token
 
     _logger.info(f"{method}: Created new refresh_token = {utils.shorten(refresh_token, 40)}")
     refresh_token_obj = refresh_token_class(token=refresh_token, user_id=user_obj.id)
@@ -163,6 +168,7 @@ def load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
     user = user_lookup(jwt_header, jwt_data)
     if user is None:
         error_msg = f"user_lookup returned None for {identity}"
+        _logger.error(error_msg)
         raise exceptions.UserLookupError(error_msg, jwt_header, jwt_data)
     return {"loaded_user": user}
 
@@ -198,7 +204,9 @@ def get_current_user() -> Any:
 
     jwt_user_dict = g.get("_jwt_extended_jwt_user", None)
     if jwt_user_dict is None:
-        raise RuntimeError("You must provide a `@jwt.user_lookup_loader` callback to use this method")
+        err = "You must provide a `@jwt.user_lookup_loader` callback to use this method"
+        _logger.error(err)
+        raise RuntimeError(err)
     return jwt_user_dict["loaded_user"]
 
 

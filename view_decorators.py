@@ -6,7 +6,6 @@ from .tokens import (process_and_handle_tokens, after_request)
 # TODO - protected decorator
 
 def jwt_sca(fresh: bool = False,
-            refresh: bool = False, # TODO - check this later, ignore for now
             optional: bool = True,
             verify_type: bool = True,
             skip_revocation_check: bool = False) -> Any:
@@ -17,9 +16,6 @@ def jwt_sca(fresh: bool = False,
         :param optional:  If ``True``, allow the decorated endpoint to be accessed if no JWT is present in the request
 
         :param fresh:  If ``True``, require a JWT marked with ``fresh`` to be able to access this endpoint
-
-        :param refresh:  If ``True``, requires a refresh JWT to access this endpoint. If ``False``, requires an access
-                         JWT to access this endpoint
 
         :param verify_type:  If ``True``, the token type (access or refresh) will be checked according to the
                              ``refresh`` argument. If ``False``, type will not be checked and both access and refresh
@@ -34,7 +30,7 @@ def jwt_sca(fresh: bool = False,
         def decorator(*args, **kwargs):
 
             # token auto-refreshing and validation
-            process_and_handle_tokens(optional=optional, fresh=fresh, refresh=refresh, verify_type=verify_type,
+            process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
                                       skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
 
             # run the controller
