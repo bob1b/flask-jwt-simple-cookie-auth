@@ -21,6 +21,8 @@ def login_user(user_obj, access_token_class=None, refresh_token_class=None, db=N
     # create cookies and save in 'g' so they will be applied to the response
     g.new_access_token = create_or_update_user_access_token(user_obj, access_token_class=access_token_class, db=db)
     g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_class=refresh_token_class, db=db)
+    print(f"\nlogin_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
+    print(f"              g.new_refresh_token = {utils.shorten(g.new_refresh_token, 30)}")
 
     # remove tokens for this user that are completely expired (non-refreshable)
     remove_user_expired_tokens(user_obj,access_token_class=access_token_class, refresh_token_class=refresh_token_class,

@@ -23,8 +23,7 @@ def get_refresh_cookie_value(req: Request = None) -> dict or None:
 
 def set_access_cookies(response: Response, encoded_access_token: str, max_age=None, domain=None) -> None:
     """
-        Modify a Flask Response to set a cookie containing the access JWT. Also sets the corresponding CSRF cookies if
-        ``JWT_CSRF_IN_COOKIES`` is ``True`` (see :ref:`Configuration Options`)
+        Modify a Flask Response to set a cookie containing the access JWT. Also sets the corresponding CSRF cookies
 
         :param response:
             A Flask Response object.
@@ -65,10 +64,10 @@ def set_access_cookies(response: Response, encoded_access_token: str, max_age=No
         samesite=config.cookie_samesite,
     )
 
-    if config.csrf_protect and config.csrf_in_cookies:
+    if config.csrf_protect:
         response.set_cookie(
             config.access_csrf_cookie_name,
-            value=tokens.get_csrf_token(encoded_access_token),
+            value="TODO", # tokens.get_csrf_token(encoded_access_token),
             max_age=max_age or config.cookie_max_age,
             secure=config.cookie_secure,
             httponly=False,
@@ -82,9 +81,7 @@ def set_refresh_cookies(
         response: Response, encoded_refresh_token: str, max_age: Optional[int] = None, domain: Optional[str] = None
 ) -> None:
     """
-    Modify a Flask Response to set a cookie containing the refresh JWT.
-    Also sets the corresponding CSRF cookies if ``JWT_CSRF_IN_COOKIES`` is ``True``
-    (see :ref:`Configuration Options`)
+    Modify a Flask Response to set a cookie containing the refresh JWT. Also sets the corresponding CSRF cookies
 
     :param response:
         A Flask Response object.
@@ -115,10 +112,10 @@ def set_refresh_cookies(
         samesite=config.cookie_samesite,
     )
 
-    if config.csrf_protect and config.csrf_in_cookies:
+    if config.csrf_protect:
         response.set_cookie(
             config.refresh_csrf_cookie_name,
-            value=tokens.get_csrf_token(encoded_refresh_token),
+            value="TODO", # tokens.get_csrf_token(encoded_refresh_token),
             max_age=max_age or config.cookie_max_age,
             secure=config.cookie_secure,
             httponly=False,
@@ -169,7 +166,7 @@ def unset_access_cookies(response: Response, domain: Optional[str] = None) -> No
         samesite=config.cookie_samesite,
     )
 
-    if config.csrf_protect and config.csrf_in_cookies:
+    if config.csrf_protect:
         response.set_cookie(
             config.access_csrf_cookie_name,
             value="",
@@ -206,7 +203,7 @@ def unset_refresh_cookies(response: Response, domain: Optional[str] = None) -> N
         samesite=config.cookie_samesite,
     )
 
-    if config.csrf_protect and config.csrf_in_cookies:
+    if config.csrf_protect:
         response.set_cookie(
             config.refresh_csrf_cookie_name,
             value="",

@@ -155,7 +155,6 @@ class JWTManager(object):
                    ("JWT_COOKIE_SAMESITE", None),
                    ("JWT_COOKIE_SECURE", False),
                    ("JWT_CSRF_CHECK_FORM", False),
-                   ("JWT_CSRF_IN_COOKIES", True),
                    ("JWT_CSRF_METHODS", ["POST", "PUT", "PATCH", "DELETE"]),
                    ("JWT_DECODE_ALGORITHMS", None),
                    ("JWT_DECODE_AUDIENCE", None),

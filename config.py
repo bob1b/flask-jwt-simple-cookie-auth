@@ -81,10 +81,6 @@ class _Config(object):
         return current_app.config["JWT_CSRF_METHODS"]
 
     @property
-    def csrf_in_cookies(self) -> bool:
-        return current_app.config["JWT_CSRF_IN_COOKIES"]
-
-    @property
     def access_csrf_cookie_name(self) -> str:
         return current_app.config["JWT_ACCESS_CSRF_COOKIE_NAME"]
 

@@ -1,4 +1,5 @@
 import jwt
+import json
 import uuid
 import logging
 from json import JSONEncoder
@@ -54,7 +55,7 @@ def process_and_handle_tokens(fresh: bool = False,
         encoded_token, refresh_token, csrf_token = get_tokens_from_cookies()  # this method checks "flask.g" before cookies
         unverified_headers = jwt.get_unverified_header(encoded_token)
 
-        print(f'encoded token = {utils.shorten(encoded_token, 30)}')
+        print(f'\nencoded token = {utils.shorten(encoded_token, 30)}')
         print(f'refresh token = {utils.shorten(refresh_token, 30)}')
         print("unverified_headers = ", unverified_headers)
 
@@ -80,6 +81,17 @@ def process_and_handle_tokens(fresh: bool = False,
     user.set_current_user(jwt_header, jwt_data)
 
     return jwt_header, jwt_data
+
+
+def decode_token(encoded_token: str):
+    token_dict = jwt.decode(encoded_token,
+                            None,  # secret
+                            issuer=config.decode_issuer,
+                            audience=config.decode_audience,
+                            algorithms=config.decode_algorithms,
+                            options={"verify_signature": False})
+    print(f"decode_token: {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
+    return token_dict
 
 
 def decode_and_validate_tokens(
@@ -124,7 +136,7 @@ def decode_and_validate_tokens(
         "issuer": config.decode_issuer,
         "audience": config.decode_audience,
         "enc_access_token": enc_access_token,
-        "enc_refresh_token": enc_access_token,
+        "enc_refresh_token": enc_refresh_token,
         "algorithms": config.decode_algorithms,
         "skip_revocation_check": skip_revocation_check,
         "identity_claim_key": config.identity_claim_key,
@@ -135,12 +147,11 @@ def decode_and_validate_tokens(
     jwt_man = jwt_manager.get_jwt_manager()
 
     try:
-        dec_access_token = jwt.decode(enc_access_token,
-                                       None, # secret
-                                       issuer=opt['issuer'],
-                                       audience=opt['audience'],
-                                       algorithms=opt['algorithms'],
-                                       options={"verify_signature": False})
+        print("\naccess")
+        dec_access_token = decode_token(enc_access_token)
+        print("\nrefresh")
+        dec_refresh_token = decode_token(enc_refresh_token)
+
         opt['secret'] = jwt_man.decode_key_callback(unverified_headers, dec_access_token)
         dec_access_token, dec_refresh_token = validate_jwt(**opt)
 
@@ -196,10 +207,8 @@ def validate_jwt(enc_access_token: str,
 
     # Verify the ext, iat, and nbf (not before) claims. This optionally verifies the expiration and audience claims
     # if enabled. Exceptions are raised for invalid conditions, e.g. token expiration
-    dec_access_token = jwt.decode(enc_access_token, secret, algorithms=algorithms, audience=audience, issuer=issuer,
-                                  leeway=leeway, options=options)
-    dec_refresh_token = jwt.decode(enc_refresh_token, secret, algorithms=algorithms, audience=audience, issuer=issuer,
-                                   leeway=leeway, options=options)
+    dec_access_token = decode_token(enc_access_token)
+    dec_refresh_token = decode_token(enc_refresh_token)
 
     # TODO - are these needed?
     if "type" not in dec_access_token:
@@ -212,14 +221,15 @@ def validate_jwt(enc_access_token: str,
         dec_access_token["jti"] = None
 
     # Token verification provided by this extension
-    if not dec_access_token and not allow_expired:
-        err = f"Missing or bad access JWT"
-        _logger.error(err)
-        raise exceptions.NoAuthorizationError(err)
-    if not dec_refresh_token and not allow_expired:
-        err = f"Missing or bad refresh JWT"
-        _logger.error(err)
-        raise exceptions.NoAuthorizationError(err)
+    if not allow_expired:
+        if not dec_access_token:
+            err = f"Missing or bad access JWT"
+            _logger.error(err)
+            raise exceptions.NoAuthorizationError(err)
+        if not dec_refresh_token:
+            err = f"Missing or bad refresh JWT"
+            _logger.error(err)
+            raise exceptions.NoAuthorizationError(err)
 
     if verify_type:
         verify_token_type(dec_access_token, is_refresh=False)
@@ -382,9 +392,7 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         return
     g.checked_expiring = True
 
-    enc_access_token = request.cookies.get(config.access_cookie_name)
-    enc_refresh_token = request.cookies.get(config.refresh_cookie_name)
-    csrf_token = request.cookies.get(config.access_csrf_cookie_name)
+    enc_access_token , enc_refresh_token, csrf_token = get_tokens_from_cookies()
 
     if not enc_access_token or not enc_refresh_token or not csrf_token:
         print(f"missing token: A-{utils.shorten(enc_access_token,20)}, R-{utils.shorten(enc_refresh_token, 20)} ' +"
@@ -583,6 +591,7 @@ def get_jwt_identity() -> Any:
     return get_jwt().get(config.identity_claim_key, None)
 
 
+# TODO - rewrite this method
 def get_csrf_token(encoded_token: str) -> str: # TODO
     """
         Returns the CSRF double submit token from an encoded JWT.
@@ -614,10 +623,6 @@ def find_refresh_token_by_string(user_id: int,
     return results.one_or_none()
 
 
-# TODO
-def simple_decode_token():
-    pass
-
 def expires_in_seconds(token_obj: Any,
                        token_class: Any = None,
                        use_refresh_expiration_delta: bool = False) -> int:
@@ -643,7 +648,7 @@ def expires_in_seconds(token_obj: Any,
 
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
     import json
-    print(json.dumps(decoded_token, indent=2))
+    print(f'verify_token_type(): refresh = {is_refresh}, dict in = {json.dumps(decoded_token, indent=2)}')
     t = decoded_token["type"]
     if not is_refresh and t == "refresh":
         err = f'verify_token_type(): expected access token but got type: "{t}"'
