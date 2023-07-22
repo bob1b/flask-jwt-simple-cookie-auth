@@ -12,6 +12,7 @@ from typing import (Any, Iterable, List, Type, Union, Optional, Tuple)
 from . import user
 from . import utils
 from . import typing
+from . import cookies
 from . import exceptions
 from . import jwt_manager
 from .config import config
@@ -59,6 +60,7 @@ def process_and_handle_tokens(fresh: bool = False,
 
         print(f'\naccess token = {utils.shorten(enc_access_token, 30)}')
         print(f'refresh token = {utils.shorten(enc_refresh_token, 30)}')
+        print(f'csrf tokens = {utils.shorten(enc_csrf_tokens[0], 30)}, {utils.shorten(enc_csrf_tokens[1], 30)}')
         print("unverified_headers = ", jwt_header)
 
         opt = {
@@ -114,45 +116,10 @@ def decode_token(encoded_token: str):
 
 
 def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None]]:
-
-    # """ TODO
-    #     Decode and validate access and refresh token strings
-    #
-    #     Returns the decoded token (python dict) from an encoded JWT. This does all the checks to ensure that the decoded
-    #     token is valid before returning it.
-    #
-    #     This will not fire the user loader callbacks, save the token for access in protected endpoints, check if a
-    #     token is revoked, etc. This is purely used to ensure that a JWT is valid.
-    #
-    #         :param encoded_token:  The encoded JWT to decode.
-    #         :param encoded_token:  The encoded JWT to decode.
-    #         :param csrf_value:  Expected CSRF double submit value (optional).
-    #         :param auto_refresh:  if a token has expired, attempt to refresh (regenerate and save) it using the refresh
-    #                               token
-    #         :param allow_expired:  If ``True``, do not raise an error if the JWT is expired. Use this when just checking
-    #                                the expiration time, i.e. .expires_in_seconds()
-    #         :return:  Dictionary containing the payload of the JWT decoded JWT.
-    # """
     errors = []
     dec_access_token = None
     dec_refresh_token = None
-    # opt = {
-    #     "fresh": fresh,
-    #     "leeway": config.leeway,
-    #     "csrf_value": csrf_token,
-    #     "verify_type": verify_type,
-    #     "allow_expired": allow_expired,
-    #     "issuer": config.decode_issuer,
-    #     "audience": config.decode_audience,
-    #     "enc_access_token": enc_access_token,
-    #     "enc_refresh_token": enc_refresh_token,
-    #     "algorithms": config.decode_algorithms,
-    #     "skip_revocation_check": skip_revocation_check,
-    #     "identity_claim_key": config.identity_claim_key,
-    #     "verify_aud": config.decode_audience is not None,
-    # }
 
-    jwt_header = None
     jwt_man = jwt_manager.get_jwt_manager()
 
     try:
@@ -250,7 +217,7 @@ def token_validation(opt) -> [dict, dict]:
         _logger.error(err)
         raise exceptions.JWTDecodeError(err)
 
-    if not opt['enc_csrf_tokens'] and "csrf" in dec_access_token:
+    if (not opt['enc_csrf_tokens'] or len(opt['enc_csrf_tokens']) < 1) and "csrf" in dec_access_token:
         err = "csrf is in access token but value not passed to token_validation()"
         _logger.error(err)
         raise exceptions.JWTDecodeError(err)
@@ -258,6 +225,15 @@ def token_validation(opt) -> [dict, dict]:
     if opt['enc_csrf_tokens'] and "csrf" in dec_access_token:
         c1 = dec_access_token["csrf"]
         c2 = opt['enc_csrf_tokens'][0]
+        if not c1:
+            err = f"Falsy CSRF token value in access token"
+            _logger.error(err)
+            raise exceptions.CSRFError(err)
+        if not c2:
+            err = f"Falsy CSRF token value in cookies"
+            _logger.error(err)
+            raise exceptions.CSRFError(err)
+
         if not compare_digest(c1, c2):
             err = f"CSRF double submit tokens do not match: {utils.shorten(c1,30)} != {utils.shorten(c2,30)}"
             _logger.error(err)
@@ -429,8 +405,13 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         return
 
     # token hasn't yet expired, get the info so that we can further check validity
-    dec_access_token, dec_refresh_token, jwt_header = decode_and_validate_tokens(
-        enc_access_token, enc_refresh_token, None, csrf_token=csrf_token, allow_expired=True)
+    opt = {
+        "enc_csrf_tokens": csrf_tokens,
+        "enc_access_token": enc_access_token,
+        "enc_refresh_token": enc_refresh_token,
+    }
+    dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
+
     user_id = dec_access_token.get(config.get('JWT_IDENTITY_CLAIM'))
     expired_access_token = access_token_obj
 
@@ -474,16 +455,16 @@ def after_request(response):
     print("*** after_request() ***")
     if hasattr(g, "new_access_token"):
         _logger.info(f"g.new_access_token = {utils.shorten(g.new_access_token, 40)} ***")
-        utils.set_access_cookies(response, g.new_access_token)
+        cookies.set_access_cookies(response, g.new_access_token)
 
     if hasattr(g, "new_refresh_token"):
         _logger.info(f"g.new_refresh_token = {utils.shorten(g.new_refresh_token, 40)} ***")
-        utils.set_refresh_cookies(response, g.new_refresh_token)
+        cookies.set_refresh_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
     if hasattr(g, "unset_tokens") and g.unset_tokens:
         _logger.info(f" g.unset tokens = {g.unset_tokens} *** ")
-        utils.unset_jwt_cookies(response)
+        cookies.unset_jwt_cookies(response)
 
     return response
 
@@ -600,9 +581,9 @@ def get_csrf_token(encoded_token: str) -> str: # TODO
           :param encoded_token:  The encoded JWT
           :return:  The CSRF double submit token (string)
     """
-    token = decode_and_validate_tokens(encoded_token, None, None, allow_expired=True)
-    return token["csrf"]
 
+    token = decode_token(encoded_token)
+    return token["csrf"]
 
 
 def find_access_token_by_string(user_id: int,

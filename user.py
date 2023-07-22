@@ -7,6 +7,7 @@ from werkzeug.local import LocalProxy
 
 from . import utils
 from . import tokens
+from . import cookies
 from . import exceptions
 from . import jwt_manager
 from .config import config
@@ -36,7 +37,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
         user_tokens = []
 
         # invalidate access token
-        access_cookie_value = utils.get_access_cookie_value()
+        access_cookie_value = cookies.get_access_cookie_value()
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
@@ -50,7 +51,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
                 user_tokens = user_tokens + found_access_tokens
 
         # invalidate refresh token
-        refresh_cookie_value = utils.get_refresh_cookie_value()
+        refresh_cookie_value = cookies.get_refresh_cookie_value()
         if not refresh_cookie_value:
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
@@ -156,22 +157,22 @@ def set_no_user():
 
 
 # TODO - test this well
-def set_current_user(jwt_header, jwt_data):
-    g._jwt_extended_jwt = jwt_data
+def set_current_user(jwt_header, dec_access_token):
+    g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt_user = load_user(jwt_header, jwt_data)
+    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token)
 
 
-def load_user(jwt_header: dict, jwt_data: dict) -> Optional[dict]:
+def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:
     if not has_user_lookup():
         return None
 
-    identity = jwt_data[config.identity_claim_key]
-    user = user_lookup(jwt_header, jwt_data)
+    identity = dec_access_token[config.identity_claim_key]
+    user = user_lookup(jwt_header, dec_access_token)
     if user is None:
         error_msg = f"user_lookup returned None for {identity}"
         _logger.error(error_msg)
-        raise exceptions.UserLookupError(error_msg, jwt_header, jwt_data)
+        raise exceptions.UserLookupError(error_msg, jwt_header, dec_access_token)
     return {"loaded_user": user}
 
 
