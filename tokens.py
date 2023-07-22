@@ -52,7 +52,7 @@ def process_and_handle_tokens(fresh: bool = False,
         return None
 
     try:
-        encoded_token, refresh_token, csrf_token = get_tokens_from_cookies()  # this method checks "flask.g" before cookies
+        encoded_token, refresh_token, csrf_tokens = get_tokens_from_cookies()  # this method checks "flask.g" before cookies
         unverified_headers = jwt.get_unverified_header(encoded_token)
 
         print(f'\nencoded token = {utils.shorten(encoded_token, 30)}')
@@ -60,7 +60,7 @@ def process_and_handle_tokens(fresh: bool = False,
         print("unverified_headers = ", unverified_headers)
 
         dec_access_token, dec_refresh_token, jwt_header = decode_and_validate_tokens(
-            encoded_token,  refresh_token, unverified_headers, csrf_token=csrf_token, fresh=fresh,
+            encoded_token,  refresh_token, unverified_headers, csrf_token=csrf_tokens, fresh=fresh,
             verify_type=verify_type, skip_revocation_check=skip_revocation_check
         )
 
@@ -392,11 +392,11 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         return
     g.checked_expiring = True
 
-    enc_access_token , enc_refresh_token, csrf_token = get_tokens_from_cookies()
+    enc_access_token , enc_refresh_token, csrf_tokens = get_tokens_from_cookies()
 
-    if not enc_access_token or not enc_refresh_token or not csrf_token:
+    if not enc_access_token or not enc_refresh_token or not csrf_tokens[0] or not csrf_tokens[1]:
         print(f"missing token: A-{utils.shorten(enc_access_token,20)}, R-{utils.shorten(enc_refresh_token, 20)} ' +"
-              f"f'C-{utils.shorten(csrf_token, 20)}")
+              f"CA-{utils.shorten(csrf_tokens[0], 20)}, CR-{utils.shorten(csrf_tokens[1], 20)}")
         g.unset_tokens = True
         return
 
@@ -491,7 +491,7 @@ def after_request(response):
     return response
 
 
-def get_token_from_cookie(which) -> str:
+def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str, None]]]:
     if which == 'access':
         if hasattr(g, 'new_access_token'):
             encoded_acc_token = g.new_access_token
@@ -512,14 +512,19 @@ def get_token_from_cookie(which) -> str:
 
     elif which == 'csrf':
         if config.csrf_protect and request.method in config.csrf_request_methods:
-            csrf_value = request.cookies.get(config.access_csrf_cookie_name)
-            if not csrf_value:
-                err = "Missing CSRF token"
+            csrf_access_value = request.cookies.get(config.access_csrf_cookie_name)
+            if not csrf_access_value:
+                err = "Missing CSRF access token"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
+            csrf_refresh_value = request.cookies.get(config.refresh_csrf_cookie_name)
+            if not csrf_refresh_value:
+                err = "Missing CSRF refresh token"
                 _logger.error(err)
                 raise exceptions.CSRFError(err)
         else:
-            csrf_value = None
-        return csrf_value
+            return None, None
+        return csrf_access_value, csrf_refresh_value
 
     else:
         err = f'get_token_from_cookie("{which}"): unknown token type'
@@ -540,9 +545,9 @@ def get_tokens_from_cookies() -> Tuple[str, str, Optional[str]]:
 
     encoded_acc_token = get_token_from_cookie('access')
     encoded_ref_token = get_token_from_cookie('refresh')
-    csrf_token = get_token_from_cookie('csrf')
+    csrf_tokens = get_token_from_cookie('csrf')
 
-    return encoded_acc_token, encoded_ref_token, csrf_token
+    return encoded_acc_token, encoded_ref_token, csrf_tokens
 
 
 def get_jwt() -> dict:
