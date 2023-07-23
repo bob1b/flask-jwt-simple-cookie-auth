@@ -41,8 +41,8 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_access_tokens = tokens.find_access_token_by_string(
-                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True
+            found_access_tokens = tokens.find_token_object_by_string(
+                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True, token_class=access_token_class
             )
             if not found_access_tokens:
                 _logger.warning(f'{method}: no AccessToken(s) found for cookie value "{access_cookie_value}", ' +
@@ -56,8 +56,8 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_refresh_tokens = tokens.find_access_token_by_string(
-                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True
+            found_refresh_tokens = tokens.find_token_object_by_string(
+                encrypted_token=access_cookie_value, user_id=user_obj.id, return_all=True, token_class=refresh_token_class
             )
             if not found_refresh_tokens:
                 _logger.warning(f'{method}: no RefreshToken(s) found for cookie value "{refresh_cookie_value}", ' +

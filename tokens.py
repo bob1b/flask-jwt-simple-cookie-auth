@@ -17,7 +17,6 @@ from . import exceptions
 from . import jwt_manager
 from .config import config
 
-
 _logger = logging.getLogger(__name__)
 
 
@@ -392,8 +391,8 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         return
 
 
-    access_token_obj = find_access_token_by_string(user_id, enc_access_token, access_token_class=access_token_class)
-    refresh_token_obj = find_refresh_token_by_string(user_id, enc_refresh_token, refresh_token_class=refresh_token_class)
+    access_token_obj = find_token_object_by_string(user_id, enc_access_token, token_class=access_token_class)
+    refresh_token_obj = find_token_object_by_string(user_id, enc_refresh_token, token_class=refresh_token_class)
 
     if not access_token_obj:
         _logger.warning(
@@ -593,21 +592,11 @@ def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
     return token["csrf"]
 
 
-def find_access_token_by_string(user_id: int,
+def find_token_object_by_string(user_id: int,
                                 encrypted_token: str,
-                                return_all: bool = False,
-                                access_token_class: Any = None) -> Any:
-    results = access_token_class.query.filter_by(token=encrypted_token, user_id=user_id)
-    if return_all:
-        return results.all()
-    return results.one_or_none()
-
-
-def find_refresh_token_by_string(user_id: int,
-                                 encrypted_token: str,
-                                 return_all: bool = False,
-                                 refresh_token_class: Any = None) -> Any:
-    results = refresh_token_class.query.filter_by(token=encrypted_token, user_id=user_id)
+                                token_class: Any = None,
+                                return_all: bool = False) -> Any:
+    results = token_class.query.filter_by(token=encrypted_token, user_id=user_id)
     if return_all:
         return results.all()
     return results.one_or_none()
