@@ -160,7 +160,7 @@ def set_no_user():
 def set_current_user(jwt_header, dec_access_token):
     g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token)
+    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token) # TODO - this is just the user_id ?
 
 
 def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:

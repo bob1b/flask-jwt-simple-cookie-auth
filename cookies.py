@@ -61,7 +61,12 @@ def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_ag
     response.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
 
     if config.csrf_protect:
-        response.set_cookie(csrf_cookie_name, value=tokens.get_csrf_token(encoded_token), httponly=False, **opt)
+        response.set_cookie(
+            csrf_cookie_name,
+            value=tokens.get_csrf_token_from_encoded_token(encoded_token),
+            httponly=False,
+            **opt
+        )
 
 
 def set_access_cookies(response: Response, encoded_access_token: str, max_age=None, domain=None) -> None:

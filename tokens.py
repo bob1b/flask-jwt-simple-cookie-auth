@@ -55,22 +55,22 @@ def process_and_handle_tokens(fresh: bool = False,
         return None
 
     try:
-        enc_access_token, enc_refresh_token, enc_csrf_tokens = get_tokens_from_cookies()  # this method checks "flask.g" before cookies
+        # this method checks "flask.g" before cookies
+        enc_access_token, enc_refresh_token, csrf_tokens = get_tokens_from_cookies()
         jwt_header = jwt.get_unverified_header(enc_access_token)
 
         print(f'\naccess token = {utils.shorten(enc_access_token, 30)}')
         print(f'refresh token = {utils.shorten(enc_refresh_token, 30)}')
-        print(f'csrf tokens = {utils.shorten(enc_csrf_tokens[0], 30)}, {utils.shorten(enc_csrf_tokens[1], 30)}')
-        print("unverified_headers = ", jwt_header)
+        print(f'csrf tokens = {utils.shorten(csrf_tokens[0], 30)}, {utils.shorten(csrf_tokens[1], 30)}')
 
         opt = {
             "fresh": fresh,
             "leeway": config.leeway,
+            "jwt_header": jwt_header,  # unverified headers
+            "csrf_tokens": csrf_tokens,
             "verify_type": verify_type,
             "issuer": config.decode_issuer,
-            "jwt_header": jwt_header, # unverified headers
             "audience": config.decode_audience,
-            "enc_csrf_tokens": enc_csrf_tokens,
             "enc_access_token": enc_access_token,
             "enc_refresh_token": enc_refresh_token,
             "algorithms": config.decode_algorithms,
@@ -78,11 +78,10 @@ def process_and_handle_tokens(fresh: bool = False,
             "skip_revocation_check": skip_revocation_check,
             "identity_claim_key": config.identity_claim_key,
             "verify_aud": config.decode_audience is not None,
+            "validate_csrf_for_this_request": config.csrf_protect and request.method in config.csrf_request_methods
         }
 
-
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
-        print(f"\nprocess_and_handle_tokens(): unverified jwt_header = {json.dumps(opt['jwt_header'])}")
         # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
     # catch
@@ -101,31 +100,37 @@ def process_and_handle_tokens(fresh: bool = False,
     # callbacks succeed
     user.set_current_user(opt['jwt_header'], dec_access_token)
 
-    return opt['jwt_header'], dec_access_token
+    return dec_access_token
 
 
-def decode_token(encoded_token: str):
-    token_dict = jwt.decode(encoded_token,
-                            None,  # secret
-                            issuer=config.decode_issuer,
-                            audience=config.decode_audience,
-                            algorithms=config.decode_algorithms,
-                            options={"verify_signature": False})
-    print(f"decode_token: {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
-    return token_dict
+def decode_token(encoded_token: str) -> dict:
+    try:
+        token_dict = jwt.decode(encoded_token,
+                                None,  # secret - None means to use the secret in the app config
+                                issuer=config.decode_issuer,
+                                audience=config.decode_audience,
+                                algorithms=config.decode_algorithms,
+                                options={"verify_signature": False})
+        print(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
+        return token_dict
+
+    except Exception as e:
+        err = f'decode_token(): exception in jwt.decode({utils.shorten(encoded_token, 30)}): {e}'
+        _logger.error(err)
+        raise
+
 
 
 def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None]]:
     errors = []
     dec_access_token = None
     dec_refresh_token = None
+    # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
     jwt_man = jwt_manager.get_jwt_manager()
 
     try:
-        print("\naccess")
         dec_access_token = decode_token(opt['enc_access_token'])
-        print("\nrefresh")
         dec_refresh_token = decode_token(opt['enc_refresh_token'])
 
         opt['secret'] = jwt_man.decode_key_callback(opt['jwt_header'], dec_access_token)
@@ -212,32 +217,33 @@ def token_validation(opt) -> [dict, dict]:
         _logger.error(err)
         raise exceptions.JWTDecodeError(err)
 
-    if opt['enc_csrf_tokens'] and "csrf" not in dec_access_token:
+    if opt['csrf_tokens'] and "csrf" not in dec_access_token:
         err = "Missing claim: csrf"
         _logger.error(err)
         raise exceptions.JWTDecodeError(err)
 
-    if (not opt['enc_csrf_tokens'] or len(opt['enc_csrf_tokens']) < 1) and "csrf" in dec_access_token:
-        err = "csrf is in access token but value not passed to token_validation()"
-        _logger.error(err)
-        raise exceptions.JWTDecodeError(err)
+    if opt['validate_csrf_for_this_request']:
+        if (not opt['csrf_tokens'] or len(opt['csrf_tokens']) < 1) and "csrf" in dec_access_token:
+            err = "csrf is in access token but value not passed to token_validation()"
+            _logger.error(err)
+            raise exceptions.JWTDecodeError(err)
 
-    if opt['enc_csrf_tokens'] and "csrf" in dec_access_token:
-        c1 = dec_access_token["csrf"]
-        c2 = opt['enc_csrf_tokens'][0]
-        if not c1:
-            err = f"Falsy CSRF token value in access token"
-            _logger.error(err)
-            raise exceptions.CSRFError(err)
-        if not c2:
-            err = f"Falsy CSRF token value in cookies"
-            _logger.error(err)
-            raise exceptions.CSRFError(err)
+        if opt['csrf_tokens'] and "csrf" in dec_access_token:
+            c1 = dec_access_token["csrf"]
+            c2 = opt['csrf_tokens'][0]
+            if not c1:
+                err = f"Falsy CSRF token value in access token"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
+            if not c2:
+                err = f"Falsy CSRF token value in cookies"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
 
-        if not compare_digest(c1, c2):
-            err = f"CSRF double submit tokens do not match: {utils.shorten(c1,30)} != {utils.shorten(c2,30)}"
-            _logger.error(err)
-            raise exceptions.CSRFError(err)
+            if not compare_digest(c1, c2):
+                err = f"CSRF double submit tokens do not match: {utils.shorten(c1,30)} != {utils.shorten(c2,30)}"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
 
     return dec_access_token, dec_refresh_token
 
@@ -406,7 +412,7 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
 
     # token hasn't yet expired, get the info so that we can further check validity
     opt = {
-        "enc_csrf_tokens": csrf_tokens,
+        "csrf_tokens": csrf_tokens,
         "enc_access_token": enc_access_token,
         "enc_refresh_token": enc_refresh_token,
     }
@@ -469,7 +475,26 @@ def after_request(response):
     return response
 
 
+def get_tokens_from_cookies() -> Tuple[str, str, Union[Tuple[None, None], Tuple[dict, dict]]]:
+    """
+        Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or
+        the access token was refreshed. Exceptions are raised for missing authorization or CSRF
+    """
+
+    if hasattr(g, 'unset_tokens') and g.unset_tokens:
+        err = f'Missing cookie <all unset>'
+        _logger.error(err)
+        raise exceptions.NoAuthorizationError(err)
+
+    encoded_acc_token = get_token_from_cookie('access')
+    encoded_ref_token = get_token_from_cookie('refresh')
+    csrf_tokens = get_token_from_cookie('csrf')
+
+    return encoded_acc_token, encoded_ref_token, csrf_tokens
+
+
 def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str, None]]]:
+    print(f'get_token_from_cookie({which}')
     if which == 'access':
         if hasattr(g, 'new_access_token'):
             encoded_acc_token = g.new_access_token
@@ -489,43 +514,25 @@ def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str
         return encoded_ref_token
 
     elif which == 'csrf':
-        if config.csrf_protect and request.method in config.csrf_request_methods:
-            csrf_access_value = request.cookies.get(config.access_csrf_cookie_name)
-            if not csrf_access_value:
-                err = "Missing CSRF access token"
-                _logger.error(err)
-                raise exceptions.CSRFError(err)
-            csrf_refresh_value = request.cookies.get(config.refresh_csrf_cookie_name)
-            if not csrf_refresh_value:
-                err = "Missing CSRF refresh token"
-                _logger.error(err)
-                raise exceptions.CSRFError(err)
-        else:
-            return None, None
+        csrf_access_value = request.cookies.get(config.access_csrf_cookie_name)
+        if not csrf_access_value:
+            err = "Missing CSRF access token"
+            _logger.error(err)
+            raise exceptions.CSRFError(err)
+
+        csrf_refresh_value = request.cookies.get(config.refresh_csrf_cookie_name)
+        if not csrf_refresh_value:
+            err = "Missing CSRF refresh token"
+            _logger.error(err)
+            raise exceptions.CSRFError(err)
+
+        print(f"csrf_access_value, csrf_refresh_value = {csrf_access_value}, {csrf_refresh_value}")
         return csrf_access_value, csrf_refresh_value
 
     else:
         err = f'get_token_from_cookie("{which}"): unknown token type'
         _logger.error(err)
         raise exceptions.WrongTokenError(err)
-
-
-def get_tokens_from_cookies() -> Tuple[str, str, Optional[str]]:
-    """
-        Check "flask.g" first and use that if it is set. This means that tokens have been created (user logged in) or
-        the access token was refreshed. Exceptions are raised for missing authorization or CSRF
-    """
-
-    if hasattr(g, 'unset_tokens') and g.unset_tokens:
-        err = f'Missing cookie <all unset>'
-        _logger.error(err)
-        raise exceptions.NoAuthorizationError(err)
-
-    encoded_acc_token = get_token_from_cookie('access')
-    encoded_ref_token = get_token_from_cookie('refresh')
-    csrf_tokens = get_token_from_cookie('csrf')
-
-    return encoded_acc_token, encoded_ref_token, csrf_tokens
 
 
 def get_jwt() -> dict:
@@ -575,7 +582,7 @@ def get_jwt_identity() -> Any:
 
 
 # TODO - rewrite this method
-def get_csrf_token(encoded_token: str) -> str: # TODO
+def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
     """
         Returns the CSRF double submit token from an encoded JWT.
           :param encoded_token:  The encoded JWT
@@ -615,7 +622,7 @@ def expires_in_seconds(token_obj: Any,
         TODO - probably want to allow external modules to set this method somehow so it'll match its own token model.
                For example, .token might not be the correct field name for token data in every app's Token model
    """
-    jwt_man = jwt_manager.get_jwt_manager()
+    # jwt_man = jwt_manager.get_jwt_manager()
     # identity = jwt_man.user_identity_callback({})
     dec_access_token = jwt.decode(token_obj.token,
                                   secret=None, # jwt_man.encode_key_callback(identity),
@@ -630,8 +637,8 @@ def expires_in_seconds(token_obj: Any,
 
 
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
-    import json
-    print(f'verify_token_type(): refresh = {is_refresh}, dict in = {json.dumps(decoded_token, indent=2)}')
+    # import json
+    # print(f'verify_token_type(): refresh = {is_refresh}, dict in = {json.dumps(decoded_token, indent=2)}')
     t = decoded_token["type"]
     if not is_refresh and t == "refresh":
         err = f'verify_token_type(): expected access token but got type: "{t}"'
