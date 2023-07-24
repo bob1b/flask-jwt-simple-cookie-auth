@@ -98,7 +98,7 @@ def process_and_handle_tokens(fresh: bool = False,
     return dec_access_token
 
 
-def decode_token(encoded_token: str) -> dict:
+def decode_token(encoded_token: str, no_exception=True) -> dict:
     try:
         token_dict = jwt.decode(encoded_token,
                                 None,  # secret - None means to use the secret in the app config
@@ -112,8 +112,8 @@ def decode_token(encoded_token: str) -> dict:
     except Exception as e:
         err = f'decode_token(): exception in jwt.decode({utils.shorten(encoded_token, 30)}): {e}'
         _logger.error(err)
-        raise
-
+        if not no_exception:
+            raise
 
 
 def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None]]:
