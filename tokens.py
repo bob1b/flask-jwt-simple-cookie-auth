@@ -58,10 +58,6 @@ def process_and_handle_tokens(fresh: bool = False,
         enc_access_token, enc_refresh_token, csrf_tokens = get_tokens_from_cookies()
         jwt_header = jwt.get_unverified_header(enc_access_token)
 
-        print(f'\naccess token = {utils.shorten(enc_access_token, 30)}')
-        print(f'refresh token = {utils.shorten(enc_refresh_token, 30)}')
-        print(f'csrf tokens = {utils.shorten(csrf_tokens[0], 30)}, {utils.shorten(csrf_tokens[1], 30)}')
-
         opt = {
             "fresh": fresh,
             "leeway": config.leeway,
@@ -110,7 +106,7 @@ def decode_token(encoded_token: str) -> dict:
                                 audience=config.decode_audience,
                                 algorithms=config.decode_algorithms,
                                 options={"verify_signature": False})
-        print(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
+        _logger.info(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
         return token_dict
 
     except Exception as e:
@@ -121,7 +117,6 @@ def decode_token(encoded_token: str) -> dict:
 
 
 def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None]]:
-    errors = []
     dec_access_token = None
     dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
@@ -148,8 +143,6 @@ def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None
             raise
 
     except exceptions.NoAuthorizationError as e:
-        errors.append(str(e))
-        print('exception', e)
         if (type(e) == exceptions.NoAuthorizationError or type(e) == ExpiredSignatureError) and not opt['allow_expired']:
             _logger.error(f'{type(e)}: {e}')
             raise
@@ -291,7 +284,6 @@ def encode_jwt(nbf: Optional[bool] = None,
 
     # TODO - this will need to be rewritten
     if not identity:
-        print(f"calling user_identity_callback(): identity = {identity}")
         identity = jwt_man.user_identity_callback(identity) # identity data would have to come from somewhere
 
     if secret is None:
@@ -373,15 +365,10 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
     enc_access_token , enc_refresh_token, csrf_tokens = get_tokens_from_cookies()
 
     if not enc_access_token or not enc_refresh_token or not csrf_tokens[0] or not csrf_tokens[1]:
-        print(f"missing token: A-{utils.shorten(enc_access_token,20)}, R-{utils.shorten(enc_refresh_token, 20)} ' +"
-              f"CA-{utils.shorten(csrf_tokens[0], 20)}, CR-{utils.shorten(csrf_tokens[1], 20)}")
-        g.unset_tokens = True
         return
 
     user_id = get_jwt_identity()
     if not user_id:
-        print("user not logged in")
-        g.unset_tokens = True
         return
 
     user_obj = user_class.query.get(user_id)
@@ -457,18 +444,18 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
 
 def after_request(response):
     """ Set the new access token as a response cookie """
-    print("*** after_request() ***")
+    method = 'after_request()'
     if hasattr(g, "new_access_token"):
-        _logger.info(f"g.new_access_token = {utils.shorten(g.new_access_token, 40)} ***")
+        _logger.info(f"{method}: g.new_access_token = {utils.shorten(g.new_access_token, 40)} ***")
         cookies.set_access_cookies(response, g.new_access_token)
 
     if hasattr(g, "new_refresh_token"):
-        _logger.info(f"g.new_refresh_token = {utils.shorten(g.new_refresh_token, 40)} ***")
+        _logger.info(f"{method}: g.new_refresh_token = {utils.shorten(g.new_refresh_token, 40)} ***")
         cookies.set_refresh_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
     if hasattr(g, "unset_tokens") and g.unset_tokens:
-        _logger.info(f" g.unset tokens = {g.unset_tokens} *** ")
+        _logger.info(f"{method}: g.unset tokens = {g.unset_tokens} *** ")
         cookies.unset_jwt_cookies(response)
 
     return response
@@ -493,7 +480,6 @@ def get_tokens_from_cookies() -> Tuple[str, str, Union[Tuple[None, None], Tuple[
 
 
 def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str, None]]]:
-    print(f'get_token_from_cookie({which}')
     if which == 'access':
         if hasattr(g, 'new_access_token'):
             encoded_acc_token = g.new_access_token
@@ -525,7 +511,6 @@ def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str
             _logger.error(err)
             raise exceptions.CSRFError(err)
 
-        print(f"csrf_access_value, csrf_refresh_value = {csrf_access_value}, {csrf_refresh_value}")
         return csrf_access_value, csrf_refresh_value
 
     else:
@@ -626,8 +611,6 @@ def expires_in_seconds(token_obj: Any,
 
 
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
-    # import json
-    # print(f'verify_token_type(): refresh = {is_refresh}, dict in = {json.dumps(decoded_token, indent=2)}')
     t = decoded_token["type"]
     if not is_refresh and t == "refresh":
         err = f'verify_token_type(): expected access token but got type: "{t}"'
