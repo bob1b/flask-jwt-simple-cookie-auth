@@ -479,16 +479,17 @@ def get_tokens_from_cookies() -> Tuple[str, str, Union[Tuple[None, None], Tuple[
     return encoded_acc_token, encoded_ref_token, csrf_tokens
 
 
-def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str, None]]]:
+def get_token_from_cookie(which, no_exception=True) -> Union[str, Tuple[Union[str, None], Union[str, None]]]:
     if which == 'access':
         if hasattr(g, 'new_access_token'):
             encoded_acc_token = g.new_access_token
         else:
             encoded_acc_token = request.cookies.get(config.access_cookie_name)
             if not encoded_acc_token:
-                err = f'Missing access cookie "{config.access_cookie_name}"'
-                _logger.error(err)
-                raise exceptions.NoAuthorizationError(err)
+                if not no_exception:
+                    err = f'Missing access cookie "{config.access_cookie_name}"'
+                    _logger.error(err)
+                    raise exceptions.NoAuthorizationError(err)
         return encoded_acc_token
 
     elif which == 'refresh':
@@ -496,20 +497,26 @@ def get_token_from_cookie(which) -> Union[str, Tuple[Union[str, None], Union[str
             encoded_ref_token = g.new_refresh_token
         else:
             encoded_ref_token = request.cookies.get(config.refresh_cookie_name)
+            if not no_exception:
+                err = f'Missing refresh cookie "{config.refresh_cookie_name}"'
+                _logger.error(err)
+                raise exceptions.NoAuthorizationError(err)
         return encoded_ref_token
 
     elif which == 'csrf':
         csrf_access_value = request.cookies.get(config.access_csrf_cookie_name)
         if not csrf_access_value:
-            err = "Missing CSRF access token"
-            _logger.error(err)
-            raise exceptions.CSRFError(err)
+            if not no_exception:
+                err = "Missing CSRF access token"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
 
         csrf_refresh_value = request.cookies.get(config.refresh_csrf_cookie_name)
         if not csrf_refresh_value:
-            err = "Missing CSRF refresh token"
-            _logger.error(err)
-            raise exceptions.CSRFError(err)
+            if not no_exception:
+                err = "Missing CSRF refresh token"
+                _logger.error(err)
+                raise exceptions.CSRFError(err)
 
         return csrf_access_value, csrf_refresh_value
 
