@@ -208,8 +208,10 @@ def get_current_user() -> Any:
     jwt_user_dict = g.get("_jwt_extended_jwt_user", None)
     if jwt_user_dict is None:
         err = "You must provide a `@jwt.user_lookup_loader` callback to use this method"
+        # raise RuntimeError(err)
         _logger.error(err)
-        raise RuntimeError(err)
+        return
+
     return jwt_user_dict["loaded_user"]
 
 

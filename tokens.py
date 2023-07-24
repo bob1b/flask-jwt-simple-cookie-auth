@@ -91,6 +91,10 @@ def process_and_handle_tokens(fresh: bool = False,
         user.set_no_user()
         return None
 
+    except Exception as e:
+        _logger.error(f'process_and_handle_tokens(): exception: {e}')
+        return None
+
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
     user.set_current_user(opt['jwt_header'], dec_access_token)
@@ -106,7 +110,7 @@ def decode_token(encoded_token: str, no_exception=True) -> dict:
                                 audience=config.decode_audience,
                                 algorithms=config.decode_algorithms,
                                 options={"verify_signature": False})
-        _logger.info(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
+        # _logger.info(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
         return token_dict
 
     except Exception as e:
@@ -159,6 +163,8 @@ def token_validation(opt) -> [dict, dict]:
 
         Throws exceptions when there is an issue with the tokens
     """
+    if not opt['enc_access_token'] or not opt['enc_refresh_token']:
+        return None, None
 
     options = {"verify_aud": opt['verify_aud']} # verify audience
     if opt['allow_expired']:
@@ -254,7 +260,7 @@ def encode_jwt(nbf: Optional[bool] = None,
                audience: Union[str, Iterable[str]] = False,
                json_encoder: Optional[Type[JSONEncoder]] = None,
                expires_delta: Optional[typing.ExpiresDelta] = None) -> str:
-
+    method = 'encode_jwt()'
     jwt_man = jwt_manager.get_jwt_manager()
     now = datetime.now(timezone.utc)
 
@@ -321,7 +327,12 @@ def encode_jwt(nbf: Optional[bool] = None,
     if claim_overrides:
         token_data.update(claim_overrides)
 
-    return jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
+    try:
+        token = jwt.encode(token_data, secret, algorithm, json_encoder=json_encoder, headers=header_overrides)
+        return token
+    except Exception as e:
+        err = f'{method}: exception in jwt.encode({json.dumps(token_data)}): {e}'
+        _logger.error(err)
 
 
 def access_token_has_expired(token_obj: Any,
@@ -526,7 +537,7 @@ def get_token_from_cookie(which, no_exception=True) -> Union[str, Tuple[Union[st
         raise exceptions.WrongTokenError(err)
 
 
-def get_jwt() -> dict:
+def get_jwt(no_exception=True) -> dict:
     """
         This will return the python dict containing JWT payload of the client accessing the endpoint. If no JWT is
         present due to ``jwt_sca(optional=True)``, an empty dict is returned.
@@ -538,13 +549,14 @@ def get_jwt() -> dict:
         decoded_jwt = g.get("_jwt_extended_jwt", None)
 
     if decoded_jwt is None:
-        err = "You must call `@jwt_sca()` or `process_and_handle_tokens()` before using this method"
+        err = "get_jwt(): found no decoded_jwt"
         _logger.error(err)
-        raise RuntimeError(err)
+        if not no_exception:
+            raise RuntimeError(err)
     return decoded_jwt
 
 
-def get_jwt_header() -> dict:
+def get_jwt_header(no_exception=True) -> dict:
     """
         In a protected endpoint, this will return the python dictionary which has the header of the JWT that is
         accessing the endpoint. If no JWT is present due to ``jwt_sca(optional=True)``, an empty dictionary is
@@ -557,9 +569,11 @@ def get_jwt_header() -> dict:
         decoded_header = g.get("_jwt_extended_jwt", None)
 
     if decoded_header is None:
-        err = "You must call `@jwt_sca()` or `process_and_handle_tokens()` before using this method"
+        err = "get_jwt_header(): found no decoded_header info"
         _logger.error(err)
-        raise RuntimeError(err)
+        if not no_exception:
+            raise RuntimeError(err)
+
     return decoded_header
 
 
@@ -596,18 +610,27 @@ def find_token_object_by_string(user_id: int,
 
 def expires_in_seconds(token_obj: Any,
                        token_class: Any = None,
-                       use_refresh_expiration_delta: bool = False) -> int:
+                       no_exception: bool = True,
+                       use_refresh_expiration_delta: bool = False) -> Optional[int]:
     """
         token_obj: a Token model (ie. Sqlalchemy) object
 
         TODO - probably want to allow external modules to set this method somehow so it'll match its own token model.
                For example, .token might not be the correct field name for token data in every app's Token model
    """
-    # jwt_man = jwt_manager.get_jwt_manager()
-    # identity = jwt_man.user_identity_callback({})
-    dec_access_token = jwt.decode(token_obj.token,
-                                  secret=None, # jwt_man.encode_key_callback(identity),
-                                  algorithms=config.decode_algorithms, options={"verify_signature": False})
+    method = 'expires_in_seconds()'
+    dec_access_token = None
+    try:
+        dec_access_token = jwt.decode(token_obj.token,
+                                      secret=None, # jwt_man.encode_key_callback(identity),
+                                      algorithms=config.decode_algorithms, options={"verify_signature": False})
+    except Exception as e:
+        err = f'{method}: exception in jwt.decode(): {e}'
+        _logger.error(err)
+        if not no_exception:
+            raise
+        return
+
     expires_in = dec_access_token["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
