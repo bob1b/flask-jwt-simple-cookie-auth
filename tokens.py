@@ -481,6 +481,7 @@ def get_tokens_from_cookies() -> Tuple[str, str, Union[Tuple[None, None], Tuple[
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
         err = f'Missing cookie <all unset>'
         _logger.error(err)
+        # TODO - optionally do not raise exception
         raise exceptions.NoAuthorizationError(err)
 
     encoded_acc_token = get_token_from_cookie('access')

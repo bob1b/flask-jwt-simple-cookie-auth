@@ -70,6 +70,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
             db.session.delete(token)  # TODO - create user function for this
         db.session.commit()
 
+        _logger.info(f'logging out, setting unset to true, currently g = {g.__dict__}')
         g.unset_tokens = True
 
 

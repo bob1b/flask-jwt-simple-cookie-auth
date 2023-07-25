@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 from functools import wraps
-from flask import current_app
+from flask import (g, current_app)
 from . import cookies
 from .tokens import (process_and_handle_tokens, after_request)
 
@@ -43,7 +43,16 @@ def jwt_sca(fresh: bool = False,
 
             # update any refreshed cookies in the response
             _logger.info(f'** just before after_request: {cookies.get_access_cookie_value()}')
-            return after_request(response)
+            _logger.info(f'** g = {g.__dict__}')
+            response = after_request(response)
+
+            # this should not be needed to prevent persistence of "g" data across requests
+            for attr_name in ['_jwt_extended_jwt_user', '_jwt_extended_jwt_header', '_jwt_extended_jwt',
+                              'new_access_token', 'new_refresh_token', 'unset_tokens']:
+                g.pop(attr_name, None)
+
+            return response
+
         return decorator
 
     return wrapper
