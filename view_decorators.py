@@ -34,7 +34,7 @@ def jwt_sca(fresh: bool = False,
                                       skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
 
             # run the controller
-            response = current_app.ensure_sync(fn)(*args, **kwargs)
+            response = fn(*args, **kwargs)
 
             # update any refreshed cookies in the response
             return after_request(response)
