@@ -1,7 +1,11 @@
+import logging
 from typing import Any
 from functools import wraps
 from flask import current_app
+from . import cookies
 from .tokens import (process_and_handle_tokens, after_request)
+
+_logger = logging.getLogger(__name__)
 
 # TODO - protected decorator
 
@@ -28,15 +32,17 @@ def jwt_sca(fresh: bool = False,
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
+            _logger.info(f'** start access cookie: {cookies.get_access_cookie_value()}')
 
             # token auto-refreshing and validation
             process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
                                       skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
 
             # run the controller
-            response = fn(*args, **kwargs)
+            response = current_app.ensure_sync(fn)(*args, **kwargs)
 
             # update any refreshed cookies in the response
+            _logger.info(f'** just before after_request: {cookies.get_access_cookie_value()}')
             return after_request(response)
         return decorator
 
