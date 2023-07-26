@@ -2,8 +2,12 @@ import logging
 from typing import Any
 from functools import wraps
 from flask import (g, current_app)
+
+from . import utils
+from . import tokens
 from . import cookies
-from .tokens import (process_and_handle_tokens, after_request)
+from .config import config
+
 
 _logger = logging.getLogger(__name__)
 
@@ -35,7 +39,7 @@ def jwt_sca(fresh: bool = False,
             _logger.info(f'** start access cookie: {cookies.get_access_cookie_value()}')
 
             # token auto-refreshing and validation
-            process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
+            tokens.process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
                                       skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
 
             # run the controller
@@ -44,12 +48,10 @@ def jwt_sca(fresh: bool = False,
             # update any refreshed cookies in the response
             _logger.info(f'** just before after_request: {cookies.get_access_cookie_value()}')
             _logger.info(f'** g = {g.__dict__}')
-            response = after_request(response)
+            response = tokens.after_request(response)
 
-            # this should not be needed to prevent persistence of "g" data across requests
-            for attr_name in ['_jwt_extended_jwt_user', '_jwt_extended_jwt_header', '_jwt_extended_jwt',
-                              'new_access_token', 'new_refresh_token', 'unset_tokens']:
-                g.pop(attr_name, None)
+            if config.clear_g_after_decorated_request:
+                utils.clear_g_data()
 
             return response
 

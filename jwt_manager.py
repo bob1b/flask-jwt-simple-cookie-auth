@@ -177,7 +177,8 @@ class JWTManager(object):
                    ("JWT_REFRESH_TOKEN_EXPIRES", datetime.timedelta(days=30)),
                    ("JWT_SECRET_KEY", None),
                    ("JWT_SESSION_COOKIE", False), # default to access token *not* being stored as a session cookie
-                   ("JWT_ENCODE_NBF", True)]
+                   ("JWT_ENCODE_NBF", True),
+                   ("JWT_CLEAR_G_AFTER_DECORATED_REQUEST", False)]
         for v in values:
             app.config.setdefault(v[0], v[1])
 

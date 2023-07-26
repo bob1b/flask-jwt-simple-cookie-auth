@@ -1,4 +1,5 @@
 import logging
+from flask import g
 
 _logger = logging.getLogger(__name__)
 
@@ -16,3 +17,13 @@ def shorten(value, max_len=None):
     first_part = value[:first_part_len]
     last_part = value[-last_part_len:]
     return f"{first_part}...{last_part}"
+
+
+def clear_g_data():
+    """
+        Clears values we are saving in "flask.g" that could potentially persist across requests. In most cases, this
+        should not be needed
+    """
+    for attr_name in ['_jwt_extended_jwt_user', '_jwt_extended_jwt_header', '_jwt_extended_jwt', 'new_access_token',
+                      'new_refresh_token', 'unset_tokens']:
+        g.pop(attr_name, None)

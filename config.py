@@ -226,5 +226,8 @@ class _Config(object):
     def encode_nbf(self) -> bool:
         return current_app.config["JWT_ENCODE_NBF"]
 
+    @property
+    def clear_g_after_decorated_request(self) -> bool:
+        return current_app.config["JWT_CLEAR_G_AFTER_DECORATED_REQUEST"]
 
 config = _Config()
