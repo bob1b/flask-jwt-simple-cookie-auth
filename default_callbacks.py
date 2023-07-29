@@ -6,10 +6,10 @@
     https://flask-jwt-extended.readthedocs.io/en/latest/changing_default_behavior.html
     https://flask-jwt-extended.readthedocs.io/en/latest/tokens_from_complex_object.html
 """
-from http import HTTPStatus
-from typing import Any
 
+from typing import Any
 from flask import jsonify
+from http import HTTPStatus
 from flask.typing import ResponseReturnValue
 
 from .config import config

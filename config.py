@@ -5,8 +5,8 @@ from jwt.algorithms import requires_cryptography
 from datetime import (datetime, timedelta, timezone)
 from typing import (Iterable, List, Optional, Type, Union)
 
+from .types import ExpiresDelta
 from .internal_utils import get_json_encoder
-from .typing import ExpiresDelta
 
 _logger = logging.getLogger(__name__)
 

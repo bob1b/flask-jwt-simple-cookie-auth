@@ -1,17 +1,13 @@
-import jwt
 import logging
 import datetime
-from typing import (Any, Callable, Optional)
 from flask import Flask, current_app
+from typing import (Callable, Optional)
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
                  MissingRequiredClaimError)
 
-from . import user
-from . import tokens
-from . import exceptions
+from . import jwt_user
+from . import jwt_exceptions
 from . import default_callbacks
-from .config import config
-from .typing import (ExpiresDelta, Fresh)
 
 _logger = logging.getLogger(__name__)
 
@@ -77,14 +73,14 @@ class JWTManager(object):
         app.extensions["flask-jwt-simple-cookie-auth"] = self
 
         if add_context_processor:
-            app.context_processor(user.current_user_context_processor)
+            app.context_processor(jwt_user.current_user_context_processor)
 
         # Set all the default configurations for this extension
         self._set_default_configuration_options(app)
         self._set_error_handler_callbacks(app)
 
     def _set_error_handler_callbacks(self, app: Flask) -> None:
-        @app.errorhandler(exceptions.CSRFError)
+        @app.errorhandler(jwt_exceptions.CSRFError)
         def handle_csrf_error(e):
             return self._unauthorized_callback(str(e))
 
@@ -96,7 +92,7 @@ class JWTManager(object):
         def handle_expired_error(e):
             return self._expired_token_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(exceptions.FreshTokenRequired)
+        @app.errorhandler(jwt_exceptions.FreshTokenRequired)
         def handle_fresh_token_required(e):
             return self._needs_fresh_token_callback(e.jwt_header, e.jwt_data)
 
@@ -116,27 +112,27 @@ class JWTManager(object):
         def handle_invalid_token_error(e):
             return self._invalid_token_callback(str(e))
 
-        @app.errorhandler(exceptions.JWTDecodeError)
+        @app.errorhandler(jwt_exceptions.JWTDecodeError)
         def handle_jwt_decode_error(e):
             return self._invalid_token_callback(str(e))
 
-        @app.errorhandler(exceptions.NoAuthorizationError)
+        @app.errorhandler(jwt_exceptions.NoAuthorizationError)
         def handle_auth_error(e):
             return self._unauthorized_callback(str(e))
 
-        @app.errorhandler(exceptions.RevokedTokenError)
+        @app.errorhandler(jwt_exceptions.RevokedTokenError)
         def handle_revoked_token_error(e):
             return self._revoked_token_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(exceptions.UserClaimsVerificationError)
+        @app.errorhandler(jwt_exceptions.UserClaimsVerificationError)
         def handle_failed_token_verification(e):
             return self._token_verification_failed_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(exceptions.UserLookupError)
+        @app.errorhandler(jwt_exceptions.UserLookupError)
         def handler_user_lookup_error(e):
             return self._user_lookup_error_callback(e.jwt_header, e.jwt_data)
 
-        @app.errorhandler(exceptions.WrongTokenError)
+        @app.errorhandler(jwt_exceptions.WrongTokenError)
         def handle_wrong_token_error(e):
             return self._invalid_token_callback(str(e))
 
@@ -381,4 +377,3 @@ class JWTManager(object):
         """
         self._user_lookup_error_callback = callback
         return callback
-

@@ -94,14 +94,14 @@ def unset_jwt_cookies(response: Response, domain: Optional[str] = None) -> None:
 
 def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = None) -> None:
     """
-    Modify a Flask Response to delete the cookie containing an access or refresh JWT. Also deletes the corresponding
-    CSRF cookie if applicable
+        Modify a Flask Response to delete the cookie containing an access or refresh JWT. Also deletes the corresponding
+        CSRF cookie if applicable
 
-    :cookie_type: 'access' or 'refresh'
-    :param response:  A Flask Response object
-    :param domain:  The domain of the cookie. If this is None, it will use the ``JWT_COOKIE_DOMAIN`` option (see
-                    :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
-                    JWT_COOKIE_DOMAIN option will be ignored.
+        :cookie_type: 'access' or 'refresh'
+        :param response:  A Flask Response object
+        :param domain:  The domain of the cookie. If this is None, it will use the ``JWT_COOKIE_DOMAIN`` option (see
+                        :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
+                        JWT_COOKIE_DOMAIN option will be ignored.
     """
     if cookie_type == 'refresh':
         cookie_name = config.refresh_cookie_name

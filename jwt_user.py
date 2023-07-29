@@ -8,9 +8,9 @@ from werkzeug.local import LocalProxy
 from . import utils
 from . import tokens
 from . import cookies
-from . import exceptions
 from . import jwt_manager
 from .config import config
+from . import jwt_exceptions
 
 _logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:
     if user is None:
         error_msg = f"user_lookup returned None for {identity}"
         _logger.error(error_msg)
-        raise exceptions.UserLookupError(error_msg, jwt_header, dec_access_token)
+        raise jwt_exceptions.UserLookupError(error_msg, jwt_header, dec_access_token)
     return {"loaded_user": user}
 
 
@@ -187,6 +187,7 @@ def user_lookup(*args, **kwargs) -> Any:
     return jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(*args, **kwargs)
 
 
+# TODO - go through this again
 def get_current_user() -> Any:
     """
         In a protected endpoint, this will return the user object for the JWT that is accessing the endpoint.
