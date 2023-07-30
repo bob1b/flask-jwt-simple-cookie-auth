@@ -7,15 +7,8 @@ from . import default_callbacks
 
 __version__ = ".1"
 
-# TODO - refactor verify_jwt_in_request method -> process_and_handle_tokens
-
-## features ##
-# TODO - is a user logged in or not? return user_id or None
-# TODO - JWT parsing utils
-# TODO - token creation utils
-# TODO - log in / log out
-# TODO - token expiration config
-# .. what else?
+# TODO - packaging
+# TODO - fix CSRF
 
 
 """

@@ -165,7 +165,7 @@ def set_current_user(jwt_header, dec_access_token):
 
 
 def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:
-    if not has_user_lookup():
+    if not has_user_lookup() or not dec_access_token:
         return None
 
     identity = dec_access_token[config.identity_claim_key]

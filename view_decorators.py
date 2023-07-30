@@ -36,8 +36,6 @@ def jwt_sca(fresh: bool = False,
     def wrapper(fn):
         @wraps(fn)
         def decorator(*args, **kwargs):
-            _logger.info(f'** start access cookie: {cookies.get_access_cookie_value()}')
-
             # token auto-refreshing and validation
             tokens.process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
                                       skip_revocation_check=skip_revocation_check,  no_exception_on_expired=True)
@@ -46,8 +44,6 @@ def jwt_sca(fresh: bool = False,
             response = current_app.ensure_sync(fn)(*args, **kwargs)
 
             # update any refreshed cookies in the response
-            _logger.info(f'** just before after_request: {cookies.get_access_cookie_value()}')
-            _logger.info(f'** g = {g.__dict__}')
             response = tokens.after_request(response)
 
             if config.clear_g_after_decorated_request:
