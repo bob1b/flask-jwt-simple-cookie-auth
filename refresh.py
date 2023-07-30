@@ -85,9 +85,7 @@ def refresh_expiring_jwts(user_class=None):
         g.unset_tokens = True
         return
 
-    jwt_man = jwt_manager.get_jwt_manager()
-    _, refresh_token_class = jwt_man.get_token_classes()
-    if tokens.refresh_token_has_expired(refresh_token_obj, refresh_token_class):
+    if tokens.refresh_token_has_expired(refresh_token_obj):
         _logger.info(f'{method}: user #{user_id} refresh token has expired. Access token cannot be refreshed')
         g.unset_tokens = True
         return

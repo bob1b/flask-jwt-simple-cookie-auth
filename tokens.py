@@ -337,24 +337,6 @@ def encode_jwt(nbf: Optional[bool] = None,
         _logger.error(err)
 
 
-def access_token_has_expired(token_obj: Any,
-                             fresh_required: bool = False, # TODO
-                             use_refresh_expiration_delta: bool = False) -> bool:
-    try:
-        expires_in = expires_in_seconds(token_obj, use_refresh_expiration_delta=use_refresh_expiration_delta)
-        return expires_in <= 0
-    except ExpiredSignatureError as e:
-        return True
-
-
-def refresh_token_has_expired(token_obj: Any) -> bool:
-    try:
-        expires_in = expires_in_seconds(token_obj)
-        return expires_in <= 0
-    except ExpiredSignatureError as e:
-        return True
-
-
 def after_request(response):
     """ Set the new access token as a response cookie """
     method = 'after_request()'
@@ -529,7 +511,7 @@ def expires_in_seconds(token_obj: Any,
         dec_access_token = jwt.decode(token_obj.token,
                                       secret=None, # TODO - jwt_man.encode_key_callback(identity),
                                       algorithms=config.decode_algorithms, options={"verify_signature": False})
-    except Exception as e:
+    except Exception as e: # TODO - use correct exception name here and in token_has_expired()
         err = f'{method}: exception in jwt.decode(): {e}'
         _logger.error(err)
         if not no_exception:
@@ -543,6 +525,24 @@ def expires_in_seconds(token_obj: Any,
         # Adjust the expiration time from access delta to refresh delta
         expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
     return expires_in
+
+
+def access_token_has_expired(token_obj: Any,
+                             fresh_required: bool = False, # TODO
+                             use_refresh_expiration_delta: bool = False) -> bool:
+    try:
+        expires_in = expires_in_seconds(token_obj, use_refresh_expiration_delta=use_refresh_expiration_delta)
+        return expires_in <= 0
+    except ExpiredSignatureError as e:
+        return True
+
+
+def refresh_token_has_expired(token_obj: Any) -> bool:
+    try:
+        expires_in = expires_in_seconds(token_obj)
+        return expires_in <= 0
+    except ExpiredSignatureError as e:
+        return True
 
 
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
