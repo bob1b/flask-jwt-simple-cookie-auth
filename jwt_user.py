@@ -18,20 +18,24 @@ _logger = logging.getLogger(__name__)
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 
-def login_user(user_obj, access_token_class=None, refresh_token_class=None, db=None):
+def login_user(user_obj):
     # create cookies and save in 'g' so they will be applied to the response
-    g.new_access_token = create_or_update_user_access_token(user_obj, access_token_class=access_token_class, db=db)
-    g.new_refresh_token = create_user_refresh_token(user_obj, refresh_token_class=refresh_token_class, db=db)
+
+    g.new_access_token = create_or_update_user_access_token(user_obj)
+    g.new_refresh_token = create_user_refresh_token(user_obj)
     _logger.info(f"\nlogin_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
     _logger.info(f"              g.new_refresh_token = {utils.shorten(g.new_refresh_token, 30)}")
 
     # remove tokens for this user that are completely expired (non-refreshable)
-    remove_user_expired_tokens(user_obj,access_token_class=access_token_class, refresh_token_class=refresh_token_class,
-                               db=db)
+    remove_user_expired_tokens(user_obj)
 
 
-def logout_user(user_obj, access_token_class=None, refresh_token_class=None, logout_all_sessions=False, db=None):
+def logout_user(user_obj, logout_all_sessions=False):
     method = f'logout_user({user_obj.id}, logout_all_sessions={logout_all_sessions})'
+
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, refresh_token_class = jwt_man.get_token_classes()
+    db = jwt_man.get_db()
 
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
         user_tokens = []
@@ -74,7 +78,7 @@ def logout_user(user_obj, access_token_class=None, refresh_token_class=None, log
         g.unset_tokens = True
 
 
-def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_class=None, db=None):
+def remove_user_expired_tokens(user_obj):
     """
         Remove expired access and refresh tokens for this user. Access Tokens expire in a shorter amount of time than
           Refresh Tokens, but Access Tokens can be refreshed. So, only consider Access tokens to be expired if they
@@ -85,6 +89,10 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
     """
     method = f'remove_expired_tokens(user #{user_obj.id} ({user_obj.email}))'
 
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, refresh_token_class = jwt_man.get_token_classes()
+    db = jwt_man.get_db()
+
     removed_access_count = 0
     removed_refresh_count = 0
     user_tokens = access_token_class.query.filter_by(user_id=user_obj.id).all() + \
@@ -92,9 +100,7 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
 
     for token_obj in user_tokens:
         # check if this token is not refreshable
-        expires_in_seconds = tokens.expires_in_seconds(token_obj,
-                                                       token_class=access_token_class,
-                                                       use_refresh_expiration_delta=True)
+        expires_in_seconds = tokens.expires_in_seconds(token_obj, use_refresh_expiration_delta=True)
         if int(expires_in_seconds) < 0:
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
@@ -107,14 +113,13 @@ def remove_user_expired_tokens(user_obj, access_token_class=None, refresh_token_
                      'refresh tokens')
 
 
-def create_or_update_user_access_token(user_obj,
-                                       db=None,
-                                       fresh=False,
-                                       update_existing=None,
-                                       access_token_class=None,
-                                       expires_delta=timedelta(minutes=15)):
+def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None, expires_delta=timedelta(minutes=15)):
     """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
+
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, _ = jwt_man.get_token_classes()
+    db = jwt_man.get_db()
 
     user_agent = None
     if request:
@@ -137,9 +142,14 @@ def create_or_update_user_access_token(user_obj,
     return access_token
 
 
-def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2), refresh_token_class=None, db=None):
+def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2)):
     """ create token and set JWT refresh cookie """
     method = f"User.create_user_refresh_token({user_obj})"
+
+    jwt_man = jwt_manager.get_jwt_manager()
+    _, refresh_token_class = jwt_man.get_token_classes()
+
+    db = jwt_man.get_db()
     refresh_token = tokens.create_refresh_token(identity=user_obj.id, expires_delta=expires_delta)
     g.unset_tokens = False
     g.new_refresh_token = refresh_token

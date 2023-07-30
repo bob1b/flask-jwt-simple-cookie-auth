@@ -80,7 +80,6 @@ def process_and_handle_tokens(fresh: bool = False,
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
         # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
-    # catch
     except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
 
         if type(e) == jwt_exceptions.NoAuthorizationError and not optional:
@@ -127,6 +126,8 @@ def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
     jwt_man = jwt_manager.get_jwt_manager()
+    # TODO - ensure request has access and refresh tokens
+    # TODO - value access and refresh tokens
 
     try:
         dec_access_token = decode_token(opt['enc_access_token'])
@@ -338,21 +339,17 @@ def encode_jwt(nbf: Optional[bool] = None,
 
 def access_token_has_expired(token_obj: Any,
                              fresh_required: bool = False, # TODO
-                             access_token_class: Any = None,
                              use_refresh_expiration_delta: bool = False) -> bool:
     try:
-        expires_in = expires_in_seconds(token_obj,
-                                        token_class=access_token_class,
-                                        use_refresh_expiration_delta=use_refresh_expiration_delta)
+        expires_in = expires_in_seconds(token_obj, use_refresh_expiration_delta=use_refresh_expiration_delta)
         return expires_in <= 0
     except ExpiredSignatureError as e:
         return True
 
 
-def refresh_token_has_expired(token_obj: Any,
-                              refresh_token_class: Any = None) -> bool:
+def refresh_token_has_expired(token_obj: Any) -> bool:
     try:
-        expires_in = expires_in_seconds(token_obj, token_class=refresh_token_class)
+        expires_in = expires_in_seconds(token_obj)
         return expires_in <= 0
     except ExpiredSignatureError as e:
         return True
@@ -506,7 +503,7 @@ def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
 
 def find_token_object_by_string(user_id: int,
                                 encrypted_token: str,
-                                token_class: Any = None,
+                                token_class: Any,
                                 return_all: bool = False) -> Any:
     results = token_class.query.filter_by(token=encrypted_token, user_id=user_id)
     if return_all:
@@ -515,7 +512,6 @@ def find_token_object_by_string(user_id: int,
 
 
 def expires_in_seconds(token_obj: Any,
-                       token_class: Any = None,
                        no_exception: bool = True,
                        use_refresh_expiration_delta: bool = False) -> Optional[int]:
     """
@@ -525,10 +521,13 @@ def expires_in_seconds(token_obj: Any,
                For example, .token might not be the correct field name for token data in every app's Token model
    """
     method = 'expires_in_seconds()'
-    dec_access_token = None
+
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, _ = jwt_man.get_token_classes()
+
     try:
         dec_access_token = jwt.decode(token_obj.token,
-                                      secret=None, # jwt_man.encode_key_callback(identity),
+                                      secret=None, # TODO - jwt_man.encode_key_callback(identity),
                                       algorithms=config.decode_algorithms, options={"verify_signature": False})
     except Exception as e:
         err = f'{method}: exception in jwt.decode(): {e}'
@@ -540,7 +539,7 @@ def expires_in_seconds(token_obj: Any,
     expires_in = dec_access_token["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
-    if use_refresh_expiration_delta and type(token_obj) == token_class:
+    if use_refresh_expiration_delta and type(token_obj) == access_token_class:
         # Adjust the expiration time from access delta to refresh delta
         expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
     return expires_in

@@ -1,6 +1,7 @@
 import logging
 from flask import g
 
+from . import jwt_manager
 from . import tokens
 from . import jwt_user
 from .config import config
@@ -8,7 +9,7 @@ from .config import config
 _logger = logging.getLogger(__name__)
 
 
-def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=None, user_class=None):
+def refresh_expiring_jwts(user_class=None):
     """
         Refresh access token for this request/session if it has expired
 
@@ -39,6 +40,8 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         g.unset_tokens = True
         return
 
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, refresh_token_class = jwt_man.get_token_classes()
 
     access_token_obj = tokens.find_token_object_by_string(user_id, enc_access_token, token_class=access_token_class)
     refresh_token_obj = tokens.find_token_object_by_string(user_id, enc_refresh_token, token_class=refresh_token_class)
@@ -55,7 +58,7 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
         g.unset_tokens = True
         return
 
-    if not tokens.access_token_has_expired(access_token_obj, access_token_class=access_token_class):
+    if not tokens.access_token_has_expired(access_token_obj):
         return
 
     # token hasn't yet expired, get the info so that we can further check validity
@@ -76,13 +79,15 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
 
     # TODO - token_is_refreshable()
     # check if token cannot be refreshed (it is older than the refresh token)
-    if tokens.access_token_has_expired(access_token_obj, access_token_class=access_token_class, use_refresh_expiration_delta=True):
+    if tokens.access_token_has_expired(access_token_obj, use_refresh_expiration_delta=True):
         _logger.info(f'{method}: user #{user_id} access token cannot be refreshed because it is older than the ' +
                      'refresh token expiration')
         g.unset_tokens = True
         return
 
-    if tokens.refresh_token_has_expired(refresh_token_obj, refresh_token_class=refresh_token_class):
+    jwt_man = jwt_manager.get_jwt_manager()
+    _, refresh_token_class = jwt_man.get_token_classes()
+    if tokens.refresh_token_has_expired(refresh_token_obj, refresh_token_class):
         _logger.info(f'{method}: user #{user_id} refresh token has expired. Access token cannot be refreshed')
         g.unset_tokens = True
         return
@@ -92,8 +97,7 @@ def refresh_expiring_jwts(access_token_class=None, refresh_token_class=None, db=
                  f"'token expiration. Refreshing access token ...")
 
     # TODO - is this the correct method to call here?
-    access_token = jwt_user.create_or_update_user_access_token(user, db=db, access_token_class=access_token_class, # TODO
-                                                           update_existing=expired_access_token)
+    access_token = jwt_user.create_or_update_user_access_token(user, update_existing=expired_access_token) # TODO - fix
     g.unset_tokens = False
     g.new_access_token = access_token
 

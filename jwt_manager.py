@@ -1,7 +1,7 @@
 import logging
 import datetime
 from flask import Flask, current_app
-from typing import (Callable, Optional)
+from typing import (Callable, Optional, Tuple, Any)
 from jwt import (DecodeError, ExpiredSignatureError, InvalidAudienceError, InvalidIssuerError, InvalidTokenError,
                  MissingRequiredClaimError)
 
@@ -54,6 +54,9 @@ class JWTManager(object):
         self._needs_fresh_token_callback = default_callbacks.default_needs_fresh_token_callback
         self.token_verification_callback = default_callbacks.default_token_verification_callback
         self._token_verification_failed_callback = default_callbacks.default_token_verification_failed_callback
+        self._access_token_class = None
+        self._refresh_token_class = None
+        self._db = None
 
         # Register this extension with the flask app now (if it is provided)
         if app is not None:
@@ -377,3 +380,29 @@ class JWTManager(object):
         """
         self._user_lookup_error_callback = callback
         return callback
+
+    def set_token_classes(self, access_token_class: Any=None, refresh_token_class: Any=None):
+        self._access_token_class = access_token_class
+        self._refresh_token_class = refresh_token_class
+
+    def get_token_classes(self) -> Tuple[Any, Any]:
+        method = 'jwt_manager.get_token_classes()'
+        access_token_class = self._access_token_class
+        refresh_token_class = self._refresh_token_class
+        if not access_token_class:
+            _logger.error(f"{method}: no access_token_class was set at initialization of JWTManager")
+            return None, None
+        if not refresh_token_class:
+            _logger.error(f"{method}: no refresh_token_class was set at initialization of JWTManager")
+            return None, None
+        return access_token_class, refresh_token_class
+
+    def set_db(self, db: Any=None):
+        self._db = db
+
+    def get_db(self) -> Any:
+        method = 'jwt_manager.get_db()'
+        if not self._db:
+            _logger.error(f"{method}: no value for db was set at initialization of JWTManager")
+            return None
+        return self._db
