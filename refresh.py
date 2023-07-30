@@ -1,10 +1,11 @@
+import jwt
+import json
 import logging
-from flask import g
+from flask import g, current_app
 
-from . import jwt_manager
 from . import tokens
 from . import jwt_user
-from .config import config
+from . import jwt_manager
 
 _logger = logging.getLogger(__name__)
 
@@ -58,49 +59,54 @@ def refresh_expiring_jwts(user_class=None):
         g.unset_tokens = True
         return
 
-    if not tokens.access_token_has_expired(access_token_obj):
-        return
-
-    # token hasn't yet expired, get the info so that we can further check validity
-    opt = {
-        "csrf_tokens": csrf_tokens,
-        "enc_access_token": enc_access_token,
-        "enc_refresh_token": enc_refresh_token,
-    }
-    dec_access_token, dec_refresh_token = tokens.decode_and_validate_tokens(opt)
-
-    user_id = dec_access_token.get(config.get('JWT_IDENTITY_CLAIM'))
-    expired_access_token = access_token_obj
-
-    # user is not logged in, nothing to do
-    if not dec_access_token:
-        g.unset_tokens = True
-        return
-
-    # TODO - token_is_refreshable()
-    # check if token cannot be refreshed (it is older than the refresh token)
-    if tokens.access_token_has_expired(access_token_obj, use_refresh_expiration_delta=True):
-        _logger.info(f'{method}: user #{user_id} access token cannot be refreshed because it is older than the ' +
-                     'refresh token expiration')
-        g.unset_tokens = True
-        return
-
+    # if the refresh token has expired, then we can't refresh the access token
     if tokens.refresh_token_has_expired(refresh_token_obj):
         _logger.info(f'{method}: user #{user_id} refresh token has expired. Access token cannot be refreshed')
         g.unset_tokens = True
         return
 
-    # refresh the access token
-    _logger.info(f'{method}: user #{user_id} {-1 * tokens.expires_in_seconds(expired_access_token)} seconds since access ' +
-                 f"'token expiration. Refreshing access token ...")
+    # if the access token hasn't expired yet, then we don't need to do anything
+    if not tokens.access_token_has_expired(access_token_obj):
+        return
 
-    # TODO - is this the correct method to call here?
-    access_token = jwt_user.create_or_update_user_access_token(user, update_existing=expired_access_token) # TODO - fix
+    # token has expired. Get more info so that we can refresh it
+    expired_access_token = access_token_obj
+
+    # TODO - token_is_refreshable()
+    # check if token cannot be refreshed (it is older than the refresh token)
+    if tokens.access_token_has_expired(expired_access_token, use_refresh_expiration_delta=True):
+        _logger.info(f'{method}: user #{user_id} access token cannot be refreshed because it is older than the ' +
+                     'refresh token expiration')
+        g.unset_tokens = True
+        return
+
+    dec_access_token, _ = tokens.decode_and_validate_tokens({
+        'allow_expired': True,
+        'auto_refresh': False, # since we are already refreshing the access token and just need the decoded data
+        "csrf_tokens": csrf_tokens,
+        "enc_access_token": enc_access_token,
+        "enc_refresh_token": enc_refresh_token,
+    })
+
+    user_id = dec_access_token.get(current_app.config.get('JWT_IDENTITY_CLAIM')) # TODO - shouldn't this be kept in JWTManager?
+    # TODO - validate the user_id, it should match the current_user
+    user = None
+
+    if not user_id:
+        _logger.warning(f'{method}: unable to get user_id from decoded access token: {json.dumps(dec_access_token)}, ' +
+                        'cannot refresh access token')
+        g.unset_tokens = True
+        return
+
+    # refresh the access token
+    _logger.info(f'{method}: user #{user_id} {-1 * tokens.expires_in_seconds(expired_access_token)} seconds since ' +
+                 f'access token expiration. Refreshing access token ...')
+
+    access_token = jwt_user.create_or_update_user_access_token(user, update_existing=expired_access_token)
     g.unset_tokens = False
     g.new_access_token = access_token
+    # TODO - would we ever want to refresh the refresh token here?
 
-    # TODO - update current_user - XXX this might be causing the CSRF issue?
-    # TODO - do we need this?
-    # jwt_user.update_current_user()
-    # jwt_data, jwt_header = validate_request_jwt()
-    # jwt_user.update_current_user(jwt_header, jwt_data)
+    # update current_user
+    jwt_header = jwt.get_unverified_header(access_token)
+    jwt_user.set_current_user(jwt_header, dec_access_token)

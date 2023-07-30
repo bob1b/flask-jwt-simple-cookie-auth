@@ -3,9 +3,9 @@ import json
 import uuid
 import logging
 from json import JSONEncoder
-from flask import (request, g)
 from hmac import compare_digest
 from jwt import ExpiredSignatureError
+from flask import (request, g, current_app)
 from datetime import (datetime, timedelta, timezone)
 from typing import (Any, Iterable, Type, Union, Optional, Tuple)
 
@@ -78,6 +78,8 @@ def process_and_handle_tokens(fresh: bool = False,
         }
 
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
+        user_id = dec_access_token.get(current_app.get('JWT_IDENTITY_CLAIM'))
+        # TODO - check user object
         # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
     except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError) as e:

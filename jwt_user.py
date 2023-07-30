@@ -113,6 +113,7 @@ def remove_user_expired_tokens(user_obj):
                      'refresh tokens')
 
 
+# TODO - change expires_delta to use config value
 def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None, expires_delta=timedelta(minutes=15)):
     """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
@@ -210,13 +211,13 @@ def get_current_user() -> Any:
         :return:
             The current user object for the JWT in the current request
     """
-    tokens.get_jwt()  # Raise an error if not in a decorated context
 
-    # tokens had expired at beginning of this request
+    # unset_tokens=True means user auth tokens had expired at beginning of this request
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
         _logger.info('current_user(): got g.unset_tokens, returning no-user')
         return None
 
+    # TODO - _jwt_extended_jwt_user
     jwt_user_dict = g.get("_jwt_extended_jwt_user", None)
     if jwt_user_dict is None:
         err = "You must provide a `@jwt.user_lookup_loader` callback to use this method"
