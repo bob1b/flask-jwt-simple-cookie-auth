@@ -82,7 +82,7 @@ def process_and_handle_tokens(fresh: bool = False,
         }
 
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
-        user_id = dec_access_token.get(current_app.get('JWT_IDENTITY_CLAIM'))
+        user_id = dec_access_token.get(current_app.config.get('JWT_IDENTITY_CLAIM'))
         # TODO - check user object
         # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
