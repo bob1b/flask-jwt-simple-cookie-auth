@@ -1,9 +1,9 @@
 import logging
 
 from flask import (g, request)
-from datetime import timedelta
 from typing import (Any, Optional, Union)
 from werkzeug.local import LocalProxy
+from datetime import (timedelta, datetime, timezone)
 
 from . import utils
 from . import tokens
@@ -197,6 +197,20 @@ def has_user_lookup() -> bool:
 def user_lookup(*args, **kwargs) -> Any:
     jwt_man = jwt_manager.get_jwt_manager()
     return jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(*args, **kwargs)
+
+
+def get_user_token_info():
+    access_token = tokens.get_token_from_cookie('access', no_exception=True)
+    if not access_token:
+        return {}
+    data = tokens.decode_token(access_token, no_exception=True)
+    if data and 'exp' in data:
+        exp_seconds = int(data["exp"] - datetime.timestamp(datetime.now(timezone.utc)))
+        if exp_seconds >= 0:
+            data['exp_seconds'] = f'exp {exp_seconds} seconds from now'
+        else:
+            data['exp_seconds'] = f'exp {-1 * exp_seconds} seconds ago'
+    return data
 
 
 def get_current_user() -> Union[dict, None]:
