@@ -55,8 +55,12 @@ def process_and_handle_tokens(fresh: bool = False,
         return None
 
     try:
-        # this method checks "flask.g" before cookies
+        # Check if the request even has cookies. get_tokens_from_cookies() checks "flask.g" and will use the refreshed
+        # access token if there is one
         enc_access_token, enc_refresh_token, csrf_tokens = get_tokens_from_cookies()
+        if not enc_access_token or not enc_refresh_token: # TODO - csrf
+            return None
+
         jwt_header = jwt.get_unverified_header(enc_access_token)
 
         opt = {
@@ -122,21 +126,24 @@ def decode_token(encoded_token: str, no_exception=True) -> dict:
             raise
 
 
-def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None]]:
+def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict, None]]:
+    """
+        Accepts dict of options, which includes "enc_access_token" and "enc_refresh_token" (from cookies). Performs
+        validation on the tokens as they are decoded
+
+        If validation and decoding was successful, a tuple of the access and refresh dicts is returned. Otherwise, a
+        tuple (None, None) is returned
+    """
     dec_access_token = None
     dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
-    jwt_man = jwt_manager.get_jwt_manager()
-    # TODO - ensure request has access and refresh tokens
-    # TODO - value access and refresh tokens
+    # TODO - check if access or refresh token is missing from the tables
+    # TODO - validate access and refresh tokens
 
     try:
-        dec_access_token = decode_token(opt['enc_access_token'])
-        dec_refresh_token = decode_token(opt['enc_refresh_token'])
-
-        opt['secret'] = jwt_man.decode_key_callback(opt['jwt_header'], dec_access_token)
         dec_access_token, dec_refresh_token = token_validation(opt)
+        return dec_access_token, dec_refresh_token
 
     except ExpiredSignatureError as e:
         e.jwt_header = opt['jwt_header']
@@ -149,6 +156,7 @@ def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None
         if not opt['allow_expired']:
             _logger.error(f'{type(e)}: {e}')
             raise
+        return dec_access_token, dec_refresh_token
 
     except jwt_exceptions.NoAuthorizationError as e:
         if (type(e) == jwt_exceptions.NoAuthorizationError or type(e) == ExpiredSignatureError) and not opt['allow_expired']:
@@ -157,22 +165,23 @@ def decode_and_validate_tokens(opt) -> Tuple[Union[dict, None], Union[dict, None
         jwt_user.set_no_user()
         return None, None
 
-    return dec_access_token, dec_refresh_token
 
 
 def token_validation(opt) -> [dict, dict]:
     """
-        Validate a token string using JWT package decode(). Ensure there is an identity_claim and CSRF value in the
-        decoded data. Ensures that the CSRF value in the token data matches what was passed in to the method
+        Validate a token string using JWT package decode():
+          * Ensure there is an identity_claim and CSRF value in the decoded data
+          * Ensures that the CSRF value in the token data matches what was passed in to the method # TODO
+          * Ensures that the access and refresh tokens are found in their respective tables
 
-        Throws exceptions when there is an issue with the tokens
+        Throws exceptions when there is a validation issue with the tokens
     """
     if not opt['enc_access_token'] or not opt['enc_refresh_token']:
         return None, None
 
-    options = {"verify_aud": opt['verify_aud']} # verify audience
-    if opt['allow_expired']:
-        options["verify_exp"] = False # verify expiration
+    # options = {"verify_aud": opt['verify_aud']} # verify audience   # TODO
+    # if opt['allow_expired']:
+        # options["verify_exp"] = False # verify expiration  # TODO
 
     # Verify the ext, iat, and nbf (not before) claims. This optionally verifies the expiration and audience claims
     # if enabled. Exceptions are raised for invalid conditions, e.g. token expiration
@@ -190,7 +199,7 @@ def token_validation(opt) -> [dict, dict]:
         dec_access_token["jti"] = None
 
     # Token verification provided by this extension
-    if not opt['allow_expired']:
+    if not opt['allow_expired']: # TODO - is this still needed?
         if not dec_access_token:
             err = f"Missing or bad access JWT"
             _logger.error(err)
@@ -208,10 +217,9 @@ def token_validation(opt) -> [dict, dict]:
         verify_token_is_fresh(opt['jwt_header'], dec_access_token)
 
     if not opt['skip_revocation_check'] and opt['jwt_header']:
-        verify_token_not_blocklisted(opt['jwt_header'], dec_access_token)
+        verify_token_not_blocklisted(opt)
 
     custom_verification_for_token(opt['jwt_header'], dec_access_token)
-    # TODO - need custom verification for refresh token?
 
     # Make sure that any custom claims we expect in the token are present
     if opt['identity_claim_key'] not in dec_access_token:
@@ -547,6 +555,10 @@ def refresh_token_has_expired(token_obj: Any) -> bool:
         return True
 
 
+def token_is_refreshable(token_obj: Any,) -> bool:
+    return access_token_has_expired(token_obj, use_refresh_expiration_delta=True)
+
+
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
     t = decoded_token["type"]
     if not is_refresh and t == "refresh":
@@ -559,11 +571,43 @@ def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def verify_token_not_blocklisted(jwt_header: dict, jwt_data: dict) -> None:
+def verify_token_not_blocklisted(opt: dict) -> None:
+    """
+        Call the callback first, if there is one. Otherwise, access and refresh tokens are considered to be blocklisted
+        if there are not in the respective access and refresh token tables
+
+        Raises a RevokedTokenError exception if either token is blocklisted. Otherwise, returns nothing
+    """
+    method = f'verify_token_not_blocklisted()'
+
     jwt_man = jwt_manager.get_jwt_manager()
-    if jwt_man.token_in_blocklist_callback(jwt_header, jwt_data):
-        _logger.error(f'token is blacklisted: {jwt_header}, {jwt_data}')
-        raise jwt_exceptions.RevokedTokenError(jwt_header, jwt_data)
+    if jwt_man.token_in_blocklist_callback:
+        if jwt_man.token_in_blocklist_callback(opt):
+            _logger.error(f'{method}: token is blacklisted: {opt["jwt_header"]}, {opt["jwt_data"]}')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+
+    else:
+        access_token_class, refresh_token_class = jwt_man.get_token_classes()
+        enc_access_token = opt['enc_access_token']
+        enc_refresh_token = opt['enc_refresh_token']
+
+        # missing values for encoded access or refresh tokens?
+        if not enc_access_token:
+            _logger.error(f'{method}: missing enc_access_token, cannot determine if token is blocklisted. Assuming it is')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+        if not enc_refresh_token:
+            _logger.error(f'{method}: missing enc_refresh_token, cannot determine if token is blocklisted. Assuming it is')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+
+        # access token not in table?
+        if not access_token_class.query(token=enc_access_token):
+            _logger.error(f'{method}: access token not found in table (i.e. blocklisted): {opt["jwt_data"]}')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+
+        # refresh token not in table?
+        if not refresh_token_class.query(token=enc_refresh_token):
+            _logger.error(f'{method}: refresh token not found in table (i.e. blocklisted): {opt["jwt_data"]}')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:

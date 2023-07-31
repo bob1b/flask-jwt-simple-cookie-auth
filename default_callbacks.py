@@ -25,7 +25,7 @@ def default_additional_claims_callback(userdata: Any) -> dict:
     return {}
 
 
-def default_blocklist_callback(jwt_headers: dict, jwt_data: dict) -> bool:
+def default_blocklist_callback(opt: dict) -> bool:
     return False
 
 
