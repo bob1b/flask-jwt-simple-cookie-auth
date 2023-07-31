@@ -21,7 +21,7 @@ current_user: Any = LocalProxy(lambda: get_current_user())
 def login_user(user_obj):
     # create cookies and save in 'g' so they will be applied to the response
 
-    g.new_access_token = create_or_update_user_access_token(user_obj)
+    g.new_access_token = create_or_update_user_access_token(user_obj, fresh=True)
     g.new_refresh_token = create_user_refresh_token(user_obj)
     _logger.info(f"\nlogin_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
     _logger.info(f"              g.new_refresh_token = {utils.shorten(g.new_refresh_token, 30)}")
@@ -100,8 +100,7 @@ def remove_user_expired_tokens(user_obj):
 
     for token_obj in user_tokens:
         # check if this token is not refreshable
-        expires_in_seconds = tokens.expires_in_seconds(token_obj, use_refresh_expiration_delta=True)
-        if int(expires_in_seconds) < 0:
+        if not tokens.token_is_refreshable(token_obj):
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
