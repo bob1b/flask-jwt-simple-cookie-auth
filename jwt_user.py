@@ -2,7 +2,7 @@ import logging
 
 from flask import (g, request)
 from datetime import timedelta
-from typing import (Any, Optional)
+from typing import (Any, Optional, Union)
 from werkzeug.local import LocalProxy
 
 from . import utils
@@ -75,7 +75,7 @@ def logout_user(user_obj, logout_all_sessions=False):
         db.session.commit()
 
         _logger.info(f'logging out, setting unset to true, currently g = {g.__dict__}')
-        g.unset_tokens = True
+        set_no_user()
 
 
 def remove_user_expired_tokens(user_obj):
@@ -163,13 +163,14 @@ def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2)):
 
 
 def set_no_user():
+    g.unset_tokens = True
     g._jwt_extended_jwt = {}
     g._jwt_extended_jwt_header = {}
-    g._jwt_extended_jwt_user = {"loaded_user": None}
+    g._jwt_extended_jwt_user = None
 
 
-# TODO - test this well
 def set_current_user(jwt_header, dec_access_token):
+    g.unset_tokens = False
     g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
     g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token) # TODO - this is just the user_id ?
@@ -198,33 +199,23 @@ def user_lookup(*args, **kwargs) -> Any:
     return jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(*args, **kwargs)
 
 
-# TODO - go through this again
-def get_current_user() -> Any:
+def get_current_user() -> Union[dict, None]:
     """
-        In a protected endpoint, this will return the user object for the JWT that is accessing the endpoint.
+        If a user is logged in, this will return the user object (dict) for the JWT that is accessing the endpoint.
+        If no user is logged in, returns None.
 
-        This is only usable if :meth:`~flask_jwt_extended.JWTManager.user_lookup_loader` is configured. If the user
-        loader callback is not being used, this will raise an error.
-
-        If no JWT is present due to ``jwt_sca(optional=True)``, ``None`` is returned.
-
-        :return:
-            The current user object for the JWT in the current request
+        This method checks g.unset_tokens in case the user was logged out or had their tokens revoked at the beginning
+        of the current request
     """
 
-    # unset_tokens=True means user auth tokens had expired at beginning of this request
+    # unset_tokens=True means user auth tokens expired at beginning of this request
     if hasattr(g, 'unset_tokens') and g.unset_tokens:
         _logger.info('current_user(): got g.unset_tokens, returning no-user')
-        return None
-
-    # TODO - _jwt_extended_jwt_user
-    jwt_user_dict = g.get("_jwt_extended_jwt_user", None)
-    if jwt_user_dict is None:
-        err = "You must provide a `@jwt.user_lookup_loader` callback to use this method"
-        # raise RuntimeError(err)
-        _logger.error(err)
         return
 
+    jwt_user_dict = g.get("_jwt_extended_jwt_user")
+    if jwt_user_dict is None:
+        return
     return jwt_user_dict["loaded_user"]
 
 

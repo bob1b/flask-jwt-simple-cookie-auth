@@ -38,7 +38,7 @@ def refresh_expiring_jwts(user_class=None):
     user_obj = user_class.query.get(user_id)
     if not user_obj:
         _logger.error(f'{method}: could not find user object for cookie user id #{user_id}')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     jwt_man = jwt_manager.get_jwt_manager()
@@ -50,19 +50,19 @@ def refresh_expiring_jwts(user_class=None):
     if not access_token_obj:
         _logger.warning(
             f'{method}: no ACCESS TOKEN matching cookie. Cannot determine expiration nor refresh, user_id = {user_id}')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     if not refresh_token_obj:
         _logger.warning(
             f'{method}: no REFRESH TOKEN matching cookie. Cannot refresh, user_id = {user_id}')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     # if the refresh token has expired, then we can't refresh the access token
     if tokens.refresh_token_has_expired(refresh_token_obj):
         _logger.info(f'{method}: user #{user_id} refresh token has expired. Access token cannot be refreshed')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     # if the access token hasn't expired yet, then we don't need to do anything
@@ -76,7 +76,7 @@ def refresh_expiring_jwts(user_class=None):
     if tokens.token_is_refreshable(expired_access_token):
         _logger.info(f'{method}: user #{user_id} access token cannot be refreshed because it is older than the ' +
                      'refresh token expiration')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     dec_access_token, _ = tokens.decode_and_validate_tokens({
@@ -94,7 +94,7 @@ def refresh_expiring_jwts(user_class=None):
     if not user_id:
         _logger.warning(f'{method}: unable to get user_id from decoded access token: {json.dumps(dec_access_token)}, ' +
                         'cannot refresh access token')
-        g.unset_tokens = True
+        jwt_user.set_no_user()
         return
 
     _logger.info(f'{method}: user #{user_id} {-1 * tokens.expires_in_seconds(expired_access_token)} seconds since ' +
@@ -102,7 +102,6 @@ def refresh_expiring_jwts(user_class=None):
 
     # refresh the access token
     access_token = jwt_user.create_or_update_user_access_token(user, update_existing=expired_access_token)
-    g.unset_tokens = False
     g.new_access_token = access_token
     # TODO - would we ever want to refresh the refresh token here?
 
