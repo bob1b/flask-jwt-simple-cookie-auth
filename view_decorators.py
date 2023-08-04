@@ -37,7 +37,7 @@ def jwt_sca(fresh: bool = False,
         @wraps(fn)
         def decorator(*args, **kwargs):
             # token auto-refreshing and validation
-            tokens.process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type, auto_refresh=True,
+            tokens.process_and_handle_tokens(optional=optional, fresh=fresh, verify_type=verify_type,
                                              skip_revocation_check=skip_revocation_check, no_exception_on_expired=True)
 
             # run the controller

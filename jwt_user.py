@@ -112,7 +112,6 @@ def remove_user_expired_tokens(user_obj):
                      'refresh tokens')
 
 
-# TODO - change expires_delta to use config value
 def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None):
     """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
@@ -172,7 +171,10 @@ def set_current_user(jwt_header, dec_access_token):
     g.unset_tokens = False
     g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
-    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token) # TODO - this is just the user_id ?
+
+    # call user loader (@jwt.user_lookup_loader), if it was set by the calling application. It should return
+    #  {"loaded_user": user}, where user is the sqlalchemy user object for the user id found in jwt_data["sub"]
+    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token)
 
 
 def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:
