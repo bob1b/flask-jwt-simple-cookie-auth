@@ -675,6 +675,7 @@ def create_access_token(identity: Any,
 
         :return:  An encoded access token
     """
+    expires_delta = expires_delta or config.access_expires
     return encode_jwt(claim_overrides=additional_claims, expires_delta=expires_delta, fresh=fresh,
                       header_overrides=additional_headers, identity=identity, token_type="access")
 
@@ -707,6 +708,7 @@ def create_refresh_token(identity: Any,
 
         :return:  An encoded refresh token
     """
+    expires_delta = expires_delta or config.refresh_expires
     return encode_jwt(claim_overrides=additional_claims, expires_delta=expires_delta,
                       header_overrides=additional_headers, identity=identity, token_type="refresh")
 

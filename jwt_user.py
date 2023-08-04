@@ -113,7 +113,7 @@ def remove_user_expired_tokens(user_obj):
 
 
 # TODO - change expires_delta to use config value
-def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None, expires_delta=timedelta(minutes=15)):
+def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None):
     """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
 
@@ -125,7 +125,7 @@ def create_or_update_user_access_token(user_obj, fresh=False, update_existing=No
     if request:
         user_agent = request.headers.get("User-Agent")
 
-    access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh, expires_delta=expires_delta)
+    access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh)
     g.unset_tokens = False
     g.new_access_token = access_token
 
@@ -142,7 +142,7 @@ def create_or_update_user_access_token(user_obj, fresh=False, update_existing=No
     return access_token
 
 
-def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2)):
+def create_user_refresh_token(user_obj):
     """ create token and set JWT refresh cookie """
     method = f"User.create_user_refresh_token({user_obj})"
 
@@ -150,7 +150,7 @@ def create_user_refresh_token(user_obj, expires_delta=timedelta(weeks=2)):
     _, refresh_token_class = jwt_man.get_token_classes()
 
     db = jwt_man.get_db()
-    refresh_token = tokens.create_refresh_token(identity=user_obj.id, expires_delta=expires_delta)
+    refresh_token = tokens.create_refresh_token(identity=user_obj.id)
     g.unset_tokens = False
     g.new_refresh_token = refresh_token
 
