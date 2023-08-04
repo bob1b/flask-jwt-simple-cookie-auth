@@ -80,9 +80,9 @@ def refresh_expiring_jwts(user_class=None):
         return
 
     dec_access_token, _ = tokens.decode_and_validate_tokens({
-        'allow_expired': True,
         'auto_refresh': False, # since we are already refreshing the access token and just need the decoded data
         "csrf_tokens": csrf_tokens,
+        "no_exception_on_expired": True,
         "enc_access_token": enc_access_token,
         "enc_refresh_token": enc_refresh_token,
     })

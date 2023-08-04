@@ -26,6 +26,7 @@ _logger = logging.getLogger(__name__)
 def process_and_handle_tokens(fresh: bool = False,
                               optional: bool = False,
                               verify_type: bool = True,
+                              auto_refresh: bool = False,
                               skip_revocation_check: bool = False,
                               no_exception_on_expired: bool = False) -> Optional[Tuple[dict, dict]]:
     """
@@ -33,7 +34,7 @@ def process_and_handle_tokens(fresh: bool = False,
             If ``True``, do not raise an error if no JWT is present in the request. Defaults to ``False``.
 
         :param no_exception_on_expired:
-            If ``True``, do not raise an error if no JWT is expired. Defaults to ``False``.
+            If ``True``, do not raise an error if a JWT has expired. Defaults to ``False``.
 
         :param fresh:
             If ``True``, require a JWT marked as ``fresh`` in order to be verified. Defaults to ``False``.
@@ -76,10 +77,11 @@ def process_and_handle_tokens(fresh: bool = False,
             "enc_access_token": enc_access_token,
             "enc_refresh_token": enc_refresh_token,
             "algorithms": config.decode_algorithms,
-            "allow_expired": no_exception_on_expired,
             "skip_revocation_check": skip_revocation_check,
             "identity_claim_key": config.identity_claim_key,
             "verify_aud": config.decode_audience is not None,
+            "no_exception_on_expired": no_exception_on_expired,
+            "auto_refresh": auto_refresh if auto_refresh is not None else False,
             "validate_csrf_for_this_request": config.csrf_protect and request.method in config.csrf_request_methods
         }
 
@@ -91,6 +93,7 @@ def process_and_handle_tokens(fresh: bool = False,
         if type(e) == jwt_exceptions.NoAuthorizationError and not optional:
             _logger.error(f'{type(e)}: {e}')
             raise
+
         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
             _logger.error(f'{type(e)}: {e}')
             raise
@@ -149,19 +152,21 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
 
     except ExpiredSignatureError as e:
         e.jwt_header = opt['jwt_header']
-        if opt['auto_refresh']:
+        if opt.get('auto_refresh'):
             refresh.refresh_expiring_jwts()
 
             # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
-            e.jwt_data = token_validation(**opt)
+            print("$$$  auto-refreshed after ExpiredSignatureError: now rerunnign token validation")
+            e.jwt_data = token_validation(opt)
 
-        if not opt['allow_expired']:
+        if not opt['no_exception_on_expired']:
             _logger.error(f'{type(e)}: {e}')
             raise
         return dec_access_token, dec_refresh_token
 
     except jwt_exceptions.NoAuthorizationError as e:
-        if (type(e) == jwt_exceptions.NoAuthorizationError or type(e) == ExpiredSignatureError) and not opt['allow_expired']:
+        if (type(e) == jwt_exceptions.NoAuthorizationError or type(e) == ExpiredSignatureError) \
+           and not opt['no_exception_on_expired']:
             _logger.error(f'{type(e)}: {e}')
             raise
         jwt_user.set_no_user()
@@ -190,6 +195,16 @@ def token_validation(opt) -> [dict, dict]:
     dec_access_token = decode_token(opt['enc_access_token'])
     dec_refresh_token = decode_token(opt['enc_refresh_token'])
 
+    if not dec_access_token:
+        err = f"Missing or bad access JWT"
+        _logger.error(err)
+        raise jwt_exceptions.NoAuthorizationError(err)
+
+    if not dec_refresh_token:
+        err = f"Missing or bad refresh JWT"
+        _logger.error(err)
+        raise jwt_exceptions.NoAuthorizationError(err)
+
     user_id = dec_access_token.get(current_app.config.get('JWT_IDENTITY_CLAIM'))
     if not user_id:
         err = "No user ID in access token"
@@ -209,23 +224,20 @@ def token_validation(opt) -> [dict, dict]:
     if "jti" not in dec_access_token:
         dec_access_token["jti"] = None
 
-    # Token verification provided by this extension
-    if not opt['allow_expired']: # TODO - is this still needed?
-        if not dec_access_token:
-            err = f"Missing or bad access JWT"
-            _logger.error(err)
-            raise jwt_exceptions.NoAuthorizationError(err)
-        if not dec_refresh_token:
-            err = f"Missing or bad refresh JWT"
-            _logger.error(err)
-            raise jwt_exceptions.NoAuthorizationError(err)
-
     if opt['verify_type']:
         verify_token_type(dec_access_token, is_refresh=False)
         verify_token_type(dec_refresh_token, is_refresh=True)
 
     if opt['fresh'] and opt['jwt_header']:
         verify_token_is_fresh(opt['jwt_header'], dec_access_token)
+
+    # check if either token has expired
+    access_expires = token_dict_expires_in_seconds(dec_access_token)
+    if access_expires <= 0:
+        raise ExpiredSignatureError(f'Access token has expired {access_expires} seconds ago')
+    refresh_expires = token_dict_expires_in_seconds(dec_refresh_token)
+    if refresh_expires <= 0:
+        raise ExpiredSignatureError(f'Refresh token has expired {refresh_expires} seconds ago')
 
     custom_verification_for_token(opt['jwt_header'], dec_access_token)
 
@@ -486,7 +498,10 @@ def get_jwt_identity() -> Any:
         present due to ``jwt_sca(optional=True)``, ``None`` is returned. Returns the identity of the JWT in the current
         request
     """
-    return get_jwt().get(config.identity_claim_key, None)
+    decoded_jwt = get_jwt()
+    if not decoded_jwt:
+        return
+    return decoded_jwt.get(config.identity_claim_key, None)
 
 
 # TODO - rewrite this method
@@ -509,6 +524,10 @@ def find_token_object_by_string(user_id: int,
     if return_all:
         return results.all()
     return results.one_or_none()
+
+
+def token_dict_expires_in_seconds(dec_token):
+    return int(dec_token["exp"] - datetime.timestamp(datetime.now(timezone.utc)))
 
 
 def expires_in_seconds(token_obj: Any,
@@ -535,7 +554,7 @@ def expires_in_seconds(token_obj: Any,
             raise
         return
 
-    expires_in = dec_access_token["exp"] - datetime.timestamp(datetime.now(timezone.utc))
+    expires_in = token_dict_expires_in_seconds(dec_access_token)
 
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
     access_token_class, _ = jwt_man.get_token_classes()

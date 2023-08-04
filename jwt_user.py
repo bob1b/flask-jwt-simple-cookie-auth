@@ -204,7 +204,7 @@ def get_user_token_info():
         return {}
     data = tokens.decode_token(access_token, no_exception=True)
     if data and 'exp' in data:
-        exp_seconds = int(data["exp"] - datetime.timestamp(datetime.now(timezone.utc)))
+        exp_seconds = tokens.token_dict_expires_in_seconds(data)
         if exp_seconds >= 0:
             data['exp_seconds'] = f'exp {exp_seconds} seconds from now'
         else:
