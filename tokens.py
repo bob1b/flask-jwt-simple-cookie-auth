@@ -2,6 +2,8 @@ import jwt
 import json
 import uuid
 import logging
+import traceback
+
 from json import JSONEncoder
 from hmac import compare_digest
 from jwt import ExpiredSignatureError
@@ -82,11 +84,9 @@ def process_and_handle_tokens(fresh: bool = False,
         }
 
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
-        user_id = dec_access_token.get(current_app.config.get('JWT_IDENTITY_CLAIM'))
-        # TODO - check user object
-        # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
-    except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError) as e:
+    # all exceptions relating to bad tokens should be caught here so that set_no_user() can be called
+    except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError, jwt_exceptions.RevokedTokenError) as e:
 
         if type(e) == jwt_exceptions.NoAuthorizationError and not optional:
             _logger.error(f'{type(e)}: {e}')
@@ -98,7 +98,7 @@ def process_and_handle_tokens(fresh: bool = False,
         return None
 
     except Exception as e:
-        _logger.error(f'process_and_handle_tokens(): exception: {e}')
+        _logger.error(f'process_and_handle_tokens(): exception: {e}, {traceback.format_exc()}')
         return None
 
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
@@ -134,6 +134,8 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         If validation and decoding was successful, a tuple of the access and refresh dicts is returned. Otherwise, a
         tuple (None, None) is returned
     """
+
+    # decoded tokens (dicts)
     dec_access_token = None
     dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
@@ -188,13 +190,22 @@ def token_validation(opt) -> [dict, dict]:
     dec_access_token = decode_token(opt['enc_access_token'])
     dec_refresh_token = decode_token(opt['enc_refresh_token'])
 
+    user_id = dec_access_token.get(current_app.config.get('JWT_IDENTITY_CLAIM'))
+    if not user_id:
+        err = "No user ID in access token"
+        _logger.error(err)
+        raise jwt_exceptions.NoAuthorizationError(err)
+
+    if not opt['skip_revocation_check']:
+        verify_token_not_blocklisted(opt, user_id=user_id)
+
+    # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
+
     # TODO - are these needed?
     if "type" not in dec_access_token:
         dec_access_token["type"] = "access"
-
     if "fresh" not in dec_access_token:
         dec_access_token["fresh"] = False
-
     if "jti" not in dec_access_token:
         dec_access_token["jti"] = None
 
@@ -215,9 +226,6 @@ def token_validation(opt) -> [dict, dict]:
 
     if opt['fresh'] and opt['jwt_header']:
         verify_token_is_fresh(opt['jwt_header'], dec_access_token)
-
-    if not opt['skip_revocation_check'] and opt['jwt_header']:
-        verify_token_not_blocklisted(opt)
 
     custom_verification_for_token(opt['jwt_header'], dec_access_token)
 
@@ -264,8 +272,8 @@ def encode_jwt(nbf: Optional[bool] = None,
                secret: Optional[str] = None,
                identity: Optional[Any] = None,
                algorithm: Optional[str] = None,
-               token_type: Optional[str] = 'access',
                fresh: Optional[types.Fresh] = None,
+               token_type: Optional[str] = 'access',
                claim_overrides: Optional[dict] = None,
                header_overrides: Optional[dict] = None,
                identity_claim_key: Optional[str] = None,
@@ -515,7 +523,6 @@ def expires_in_seconds(token_obj: Any,
     method = 'expires_in_seconds()'
 
     jwt_man = jwt_manager.get_jwt_manager()
-    access_token_class, _ = jwt_man.get_token_classes()
 
     try:
         dec_access_token = jwt.decode(token_obj.token,
@@ -531,6 +538,7 @@ def expires_in_seconds(token_obj: Any,
     expires_in = dec_access_token["exp"] - datetime.timestamp(datetime.now(timezone.utc))
 
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
+    access_token_class, _ = jwt_man.get_token_classes()
     if use_refresh_expiration_delta and type(token_obj) == access_token_class:
         # Adjust the expiration time from access delta to refresh delta
         expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
@@ -556,7 +564,7 @@ def refresh_token_has_expired(token_obj: Any) -> bool:
 
 
 def token_is_refreshable(token_obj: Any,) -> bool:
-    return access_token_has_expired(token_obj, use_refresh_expiration_delta=True)
+    return not access_token_has_expired(token_obj, use_refresh_expiration_delta=True)
 
 
 def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
@@ -571,43 +579,55 @@ def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def verify_token_not_blocklisted(opt: dict) -> None:
+def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
     """
-        Call the callback first, if there is one. Otherwise, access and refresh tokens are considered to be blocklisted
-        if there are not in the respective access and refresh token tables
+        Call the callback first, if there is one. Then check if the access and refresh tokens are present, for the
+        user_id if given, in the AccessToken and RefreshToken tables. If not, then the tokens are considered to be
+        blocklisted
 
         Raises a RevokedTokenError exception if either token is blocklisted. Otherwise, returns nothing
     """
     method = f'verify_token_not_blocklisted()'
 
     jwt_man = jwt_manager.get_jwt_manager()
-    if jwt_man.token_in_blocklist_callback:
-        if jwt_man.token_in_blocklist_callback(opt):
-            _logger.error(f'{method}: token is blacklisted: {opt["jwt_header"]}, {opt["jwt_data"]}')
-            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+    if 0 and jwt_man.token_in_blocklist_callback:
+        if jwt_man.token_in_blocklist_callback(opt): # TODO - this method should be called if the user tries to use a
+                                                     #        revoked token to access a protected endpoint
+            _logger.error(f'{method}: token is blacklisted: {opt["jwt_header"]}, {opt.get("jwt_data", {})}')
+            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
-    else:
-        access_token_class, refresh_token_class = jwt_man.get_token_classes()
-        enc_access_token = opt['enc_access_token']
-        enc_refresh_token = opt['enc_refresh_token']
+    access_token_class, refresh_token_class = jwt_man.get_token_classes()
+    enc_access_token = opt['enc_access_token']
+    enc_refresh_token = opt['enc_refresh_token']
 
-        # missing values for encoded access or refresh tokens?
-        if not enc_access_token:
-            _logger.error(f'{method}: missing enc_access_token, cannot determine if token is blocklisted. Assuming it is')
-            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
-        if not enc_refresh_token:
-            _logger.error(f'{method}: missing enc_refresh_token, cannot determine if token is blocklisted. Assuming it is')
-            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+    # missing values for encoded access or refresh tokens?
+    if not enc_access_token:
+        _logger.error(f'{method}: missing enc_access_token, cannot determine if token is blocklisted. Assuming it is')
+        raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
+    if not enc_refresh_token:
+        _logger.error(f'{method}: missing enc_refresh_token, cannot determine if token is blocklisted. Assuming it is')
+        raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
-        # access token not in table?
-        if not access_token_class.query(token=enc_access_token):
-            _logger.error(f'{method}: access token not found in table (i.e. blocklisted): {opt["jwt_data"]}')
-            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+    # access and refresh tokens not in tables?
+    access_token_query = access_token_class.query.filter_by(token=enc_access_token)
+    refresh_token_query = refresh_token_class.query.filter_by(token=enc_refresh_token)
 
-        # refresh token not in table?
-        if not refresh_token_class.query(token=enc_refresh_token):
-            _logger.error(f'{method}: refresh token not found in table (i.e. blocklisted): {opt["jwt_data"]}')
-            raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt["jwt_data"])
+    user_text = ''
+    if user_id:
+        access_token_query = access_token_query.filter_by(user_id=user_id)
+        refresh_token_query = refresh_token_query.filter_by(user_id=user_id)
+        user_text = f'for user #{user_id}'
+
+    if not access_token_query.all():
+        _logger.error(f'{method}: access token ({utils.shorten(enc_access_token, 30)}) {user_text} not found ' +
+                      f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
+        raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
+
+    # refresh token not in table?
+    if not refresh_token_query.all():
+        _logger.error(f'{method}: refresh token ({utils.shorten(enc_access_token, 30)}) {user_text} not found '+
+                      f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
+        raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
