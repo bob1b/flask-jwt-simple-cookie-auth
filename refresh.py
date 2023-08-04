@@ -1,9 +1,8 @@
 import jwt
 import json
 import logging
-from flask import g, current_app
+from flask import g
 
-from . import utils
 from . import tokens
 from . import jwt_user
 from . import jwt_manager
@@ -24,12 +23,14 @@ def refresh_expiring_jwts(user_class=None):
     method = f'refresh_expiring_jwts()'
 
     if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
+        _logger.info(f'{method}: already checking_expiring tokens, returning')
         return
     g.checked_expiring = True
 
     enc_access_token , enc_refresh_token, csrf_tokens = tokens.get_tokens_from_cookies()
 
     if not enc_access_token or not enc_refresh_token or not csrf_tokens[0] or not csrf_tokens[1]:
+        _logger.info(f'{method}: no tokens, returning')
         return
 
     jwt_man = jwt_manager.get_jwt_manager()
@@ -58,6 +59,7 @@ def refresh_expiring_jwts(user_class=None):
 
     # if the access token hasn't expired yet, then we don't need to do anything
     if not tokens.access_token_has_expired(access_token_obj):
+        _logger.info(f'{method}: access token hasnt expired yet, returning')
         return
 
     # token has expired. Get more info so that we can refresh it
@@ -72,10 +74,9 @@ def refresh_expiring_jwts(user_class=None):
 
     dec_access_token = tokens.decode_token(enc_access_token) # TODO - do we need to validate the token?
 
-
     jwt_header = jwt.get_unverified_header(enc_access_token)
-    user_dict = jwt_user.load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
 
+    user_dict = jwt_user.load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
     if not user_dict or not user_dict.get('loaded_user'):
         _logger.warning(f'{method}: unable to load user from decoded access token: {json.dumps(dec_access_token)},'+
                         ' cannot refresh access token')
