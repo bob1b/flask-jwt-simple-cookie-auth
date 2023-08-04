@@ -25,5 +25,5 @@ def clear_g_data():
         should not be needed
     """
     for attr_name in ['_jwt_extended_jwt_user', '_jwt_extended_jwt_header', '_jwt_extended_jwt', 'new_access_token',
-                      'new_refresh_token', 'unset_tokens']:
+                      'new_refresh_token', 'unset_tokens', 'checked_expiring']:
         g.pop(attr_name, None)
