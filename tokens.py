@@ -92,6 +92,10 @@ def process_and_handle_tokens(fresh: bool = False,
             "validate_csrf_for_this_request": config.csrf_protect and request.method in config.csrf_request_methods
         }
 
+        # decode_and_validate_tokens() - if the user is using an expired access token, this method will attempt to
+        #                                refresh it using refresh_expiring_jwts(). If the user is using a "just-expired"
+        #                                access token (which has already been updated, but the user didn't get the
+        #                                update yet), then the updated dec_access_token dict is returned by this method
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
 
     # all exceptions relating to bad tokens should be caught here so that set_no_user() can be called
@@ -114,6 +118,7 @@ def process_and_handle_tokens(fresh: bool = False,
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
     jwt_header = jwt.get_unverified_header(enc_access_token)
+    print("\n Setting current user with this dict", dec_access_token)
     jwt_user.set_current_user(jwt_header, dec_access_token)
 
     return dec_access_token
@@ -196,7 +201,11 @@ def token_validation(opt) -> [dict, dict]:
           * Ensures that the access and refresh tokens are found in their respective tables
 
         Throws exceptions when there is a validation issue with the tokens
+
+        Returns  dec_access_token dict and dec_refresh_token dict. If the user initiated this request using a
+                 "just-expired" token, the dec_access_token dict for the recently updated access token will be returned
     """
+    method = f'token_validation()'
     if not opt.get('enc_access_token') or not opt.get('enc_refresh_token'):
         return None, None
 
@@ -226,7 +235,12 @@ def token_validation(opt) -> [dict, dict]:
         raise jwt_exceptions.NoAuthorizationError(err)
 
     if not opt.get('skip_revocation_check', False):
-        verify_token_not_blocklisted(opt, user_id=user_id)
+        found_token, is_just_expired_token = verify_token_not_blocklisted(opt, user_id=user_id)
+        # if we found a just-expired token, we need to update the decoded access token dict that we are using.
+        # Otherwise, the user info in the token string will be out-of-date
+        if found_token and is_just_expired_token:
+            _logger.info(f'{method}: user is using a just-expired token, updating token dict')
+            dec_access_token = decode_token(found_token.token)
 
     # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
@@ -626,13 +640,17 @@ def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
+def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> Tuple[object, bool]:
     """
         Call the callback first, if there is one. Then check if the access and refresh tokens are present, for the
         user_id if given, in the AccessToken and RefreshToken tables. If not, then the tokens are considered to be
         blocklisted
 
-        Raises a RevokedTokenError exception if either token is blocklisted. Otherwise, returns nothing
+        Raises a RevokedTokenError exception if either token is blocklisted
+
+        Returns a tuple of:
+          * the found token (in the case of the user using a just-expired token, return the updated token)
+          * a boolean indicating if the found token is a just-expired token
     """
     method = f'verify_token_not_blocklisted()'
 
@@ -682,6 +700,8 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
         _logger.error(f'{method}: refresh token ({utils.shorten(enc_access_token, 30)}) {user_text} not found '+
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
+
+    return found_access_token, is_just_expired_access_token
 
 
 def custom_verification_for_token(jwt_header: dict, jwt_data: dict) -> None:
