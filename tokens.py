@@ -118,7 +118,6 @@ def process_and_handle_tokens(fresh: bool = False,
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
     jwt_header = jwt.get_unverified_header(enc_access_token)
-    print("\n Setting current user with this dict", dec_access_token)
     jwt_user.set_current_user(jwt_header, dec_access_token)
 
     return dec_access_token
