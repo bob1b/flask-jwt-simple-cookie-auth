@@ -51,11 +51,11 @@ def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_ag
         csrf_cookie_name = config.access_csrf_cookie_name
 
     opt = {
-        'max_age': max_age or config.cookie_max_age,
         'secure': config.cookie_secure,
-        'domain': domain or config.cookie_domain,
         'path': config.access_cookie_path,
-        'samesite': config.cookie_samesite
+        'samesite': config.cookie_samesite,
+        'domain': domain or config.cookie_domain,
+        'max_age': max_age or config.cookie_max_age
     }
 
     response.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
@@ -64,7 +64,7 @@ def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_ag
         response.set_cookie(
             csrf_cookie_name,
             value=tokens.get_csrf_token_from_encoded_token(encoded_token),
-            httponly=False,
+            httponly=True,
             **opt
         )
 
@@ -113,13 +113,13 @@ def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = 
     opt = {
         'expires': 0,
         'secure': config.cookie_secure,
-        'domain': domain or config.cookie_domain,
         'path': config.access_cookie_path,
-        'samesite': config.cookie_samesite
+        'samesite': config.cookie_samesite,
+        'domain': domain or config.cookie_domain,
     }
 
     _logger.info('\nunsetting access cookies')
     response.set_cookie(cookie_name, value="", httponly=True, **opt)
 
     if config.csrf_protect:
-        response.set_cookie(csrf_cookie_name, value="", httponly=False, **opt)
+        response.set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
