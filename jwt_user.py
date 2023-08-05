@@ -131,6 +131,13 @@ def create_or_update_user_access_token(user_obj, fresh=False, update_existing=No
     if update_existing and type(update_existing) == access_token_class:
         _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = " +
                      utils.shorten(access_token, 40))
+
+        # Save old token value and when it expired. We can use this for very recent requests that are still using the
+        # old token
+        update_existing.old_token = update_existing.token
+        update_existing.old_token_expired_at = datetime.utcnow()
+
+        # Update the access token value and user agent
         update_existing.token = access_token
         update_existing.user_agent = user_agent
     else:

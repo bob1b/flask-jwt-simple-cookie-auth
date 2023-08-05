@@ -606,6 +606,8 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
     method = f'verify_token_not_blocklisted()'
 
     jwt_man = jwt_manager.get_jwt_manager()
+
+    # TODO - reimplement this
     if 0 and jwt_man.token_in_blocklist_callback:
         if jwt_man.token_in_blocklist_callback(opt): # TODO - this method should be called if the user tries to use a
                                                      #        revoked token to access a protected endpoint
@@ -625,16 +627,15 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # access and refresh tokens not in tables?
-    access_token_query = access_token_class.query.filter_by(token=enc_access_token)
+    access_token_found = access_token_class.search_by_token_string(enc_access_token, user_id=user_id)
     refresh_token_query = refresh_token_class.query.filter_by(token=enc_refresh_token)
 
     user_text = ''
     if user_id:
-        access_token_query = access_token_query.filter_by(user_id=user_id)
         refresh_token_query = refresh_token_query.filter_by(user_id=user_id)
         user_text = f'for user #{user_id}'
 
-    if not access_token_query.all():
+    if not access_token_found:
         _logger.error(f'{method}: access token ({utils.shorten(enc_access_token, 30)}) {user_text} not found ' +
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
