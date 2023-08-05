@@ -1,12 +1,7 @@
-from . import tokens
-from . import config
-from . import jwt_user
-from . import jwt_manager
-from . import view_decorators
-from . import default_callbacks
-
 __version__ = ".1"
 
+# TODO - if token updates halfway through a set of requests, some requests won't yet have the updated cookies
+# TODO - don't refresh tokens if the user is already logged out
 # TODO - packaging
 # TODO - fix CSRF
 
