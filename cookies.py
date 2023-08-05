@@ -103,6 +103,7 @@ def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = 
                           :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
                           JWT_COOKIE_DOMAIN option will be ignored.
     """
+    method = 'unset_cookies()'
     if cookie_type == 'refresh':
         cookie_name = config.refresh_cookie_name
         csrf_cookie_name = config.refresh_csrf_cookie_name
@@ -118,7 +119,7 @@ def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = 
         'domain': domain or config.cookie_domain,
     }
 
-    _logger.info('\nunsetting access cookies')
+    _logger.info(f'{method}: unsetting access cookies')
     response.set_cookie(cookie_name, value="", httponly=True, **opt)
 
     if config.csrf_protect:

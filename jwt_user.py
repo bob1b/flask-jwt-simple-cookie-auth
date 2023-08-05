@@ -18,12 +18,12 @@ _logger = logging.getLogger(__name__)
 current_user: Any = LocalProxy(lambda: get_current_user())
 
 
-def login_user(user_obj):
+def login_user(user_obj: object):
     # create cookies and save in 'g' so they will be applied to the response
-
     g.new_access_token = create_or_update_user_access_token(user_obj, fresh=True)
     g.new_refresh_token = create_user_refresh_token(user_obj)
-    _logger.info(f"\nlogin_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
+
+    _logger.info(f"login_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
     _logger.info(f"              g.new_refresh_token = {utils.shorten(g.new_refresh_token, 30)}")
 
     # remove tokens for this user that are completely expired (non-refreshable)
@@ -83,7 +83,7 @@ def logout_user(user_obj, logout_all_sessions=False):
         set_no_user()
 
 
-def remove_user_expired_tokens(user_obj):
+def remove_user_expired_tokens(user_obj: object):
     """
         Remove expired access and refresh tokens for this user. Access Tokens expire in a shorter amount of time than
           Refresh Tokens, but Access Tokens can be refreshed. So, only consider Access tokens to be expired if they
@@ -117,7 +117,7 @@ def remove_user_expired_tokens(user_obj):
                      'refresh tokens')
 
 
-def create_or_update_user_access_token(user_obj, fresh=False, update_existing=None):
+def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None):
     """ create token and set JWT access cookie (includes CSRF) """
     method = f"User.create_user_access_token({user_obj})"
 
@@ -154,7 +154,7 @@ def create_or_update_user_access_token(user_obj, fresh=False, update_existing=No
     return access_token
 
 
-def create_user_refresh_token(user_obj):
+def create_user_refresh_token(user_obj: object):
     """ create token and set JWT refresh cookie """
     method = f"User.create_user_refresh_token({user_obj})"
 
@@ -185,32 +185,38 @@ def set_current_user(jwt_header, dec_access_token):
     g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
 
+    user_obj = load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
+    print(f"set_crrent_user: found user_obj: {user_obj}")
     # call user loader (@jwt.user_lookup_loader), if it was set by the calling application. It should return
     #  {"loaded_user": user}, where user is the sqlalchemy user object for the user id found in jwt_data["sub"]
-    g._jwt_extended_jwt_user = load_user(jwt_header, dec_access_token)
+    g._jwt_extended_jwt_user = {'loaded_user': user_obj.id} # TODO - fresh
 
 
-def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[dict]:
-    if not has_user_lookup() or not dec_access_token:
+def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[object]:
+    """
+        return the looked-up user object given the decoded access token dict
+    """
+    if not has_user_lookup():
+        _logger.error(f'load_user(): cannot lookup user if there is no user lookup method set. dec_access_token = ' +
+                      f'{dec_access_token}')
         return None
 
-    identity = dec_access_token[config.identity_claim_key]
-    user = user_lookup(jwt_header, dec_access_token)
+    if not dec_access_token:
+        return None
+
+    identity = tokens.get_jwt_identity(dec_access_token)
+    jwt_man = jwt_manager.get_jwt_manager()
+    user = jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(jwt_header, dec_access_token)
     if user is None:
         error_msg = f"user_lookup returned None for {identity}"
         _logger.error(error_msg)
         raise jwt_exceptions.UserLookupError(error_msg, jwt_header, dec_access_token)
-    return {"loaded_user": user}
+    return user
 
 
 def has_user_lookup() -> bool:
     jwt_man = jwt_manager.get_jwt_manager()
     return jwt_man.user_lookup_callback is not None
-
-
-def user_lookup(*args, **kwargs) -> Any:
-    jwt_man = jwt_manager.get_jwt_manager()
-    return jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(*args, **kwargs)
 
 
 def get_user_token_info():
@@ -227,7 +233,7 @@ def get_user_token_info():
     return data
 
 
-def get_current_user() -> Union[dict, None]:
+def get_current_user() -> Union[object, None]:
     """
         If a user is logged in, this will return the user object (dict) for the JWT that is accessing the endpoint.
         If no user is logged in, returns None.
@@ -241,10 +247,11 @@ def get_current_user() -> Union[dict, None]:
         _logger.info('current_user(): got g.unset_tokens, returning no-user')
         return
 
-    jwt_user_dict = g.get("_jwt_extended_jwt_user")
-    if jwt_user_dict is None:
+    dec_access_token = tokens.get_jwt()
+    print("get_current_user(): jwt_user_dict = ", dec_access_token)
+    if dec_access_token is None:
         return
-    return jwt_user_dict["loaded_user"]
+    return load_user(jwt_header={}, dec_access_token=dec_access_token)
 
 
 def current_user_context_processor() -> Any:

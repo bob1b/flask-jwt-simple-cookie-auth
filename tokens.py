@@ -155,9 +155,6 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
     dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
-    # TODO - check if access or refresh token is missing from the tables
-    # TODO - validate access and refresh tokens
-
     try:
         dec_access_token, dec_refresh_token = token_validation(opt)
         return dec_access_token, dec_refresh_token
@@ -233,6 +230,7 @@ def token_validation(opt) -> [dict, dict]:
         _logger.error(err)
         raise jwt_exceptions.NoAuthorizationError(err)
 
+    # check if the access and refresh tokens are in the table and match the claimed user id
     if not opt.get('skip_revocation_check', False):
         found_token, is_just_expired_token = verify_token_not_blocklisted(opt, user_id=user_id)
         # if we found a just-expired token, we need to update the decoded access token dict that we are using.
@@ -243,9 +241,6 @@ def token_validation(opt) -> [dict, dict]:
 
     # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
-    # TODO - are these needed?
-    if "type" not in dec_access_token:
-        dec_access_token["type"] = "access"
     if "fresh" not in dec_access_token:
         dec_access_token["fresh"] = False
     if "jti" not in dec_access_token:
@@ -269,8 +264,8 @@ def token_validation(opt) -> [dict, dict]:
     custom_verification_for_token(opt['jwt_header'], dec_access_token)
 
     # Make sure that any custom claims we expect in the token are present
-    if config.identity_claim_key not in dec_access_token:
-        err = f"Missing claim: {config.identity_claim_key}"
+    if not get_jwt_identity(dec_access_token, get_jwt_if_none=False):
+        err = f"{method}: Missing jwt identity claim: '{config.identity_claim_key}'"
         _logger.error(err)
         raise jwt_exceptions.JWTDecodeError(err)
 
@@ -495,13 +490,17 @@ def get_jwt_header() -> dict:
     return g.get("_jwt_extended_jwt_header", None)
 
 
-def get_jwt_identity(access_token_dict: Optional[dict] = None) -> Any:
+def get_user_id_from_token(encoded_token: str = None) -> Optional[str]:
+    return get_jwt_identity(decode_token(encoded_token))
+
+
+def get_jwt_identity(access_token_dict: Optional[dict] = None, get_jwt_if_none: bool = True) -> Any:
     """
         In a protected endpoint, this will return the identity of the JWT that is accessing the endpoint. If no JWT is
         present due to ``jwt_sca(optional=True)``, ``None`` is returned. Returns the identity of the JWT in the current
         request
     """
-    if not access_token_dict:
+    if not access_token_dict and get_jwt_if_none:
         access_token_dict = get_jwt()
         if not access_token_dict:
             return
@@ -801,5 +800,4 @@ def verify_token_is_fresh(jwt_header: Union[dict, None], jwt_data: dict) -> None
             raise jwt_exceptions.FreshTokenRequired(err, jwt_header, jwt_data)
 
 
-def get_user_id_from_token(encoded_token: str = None, decoded_token_dict: dict = None) -> Optional[str]:
-    return decode_token(encoded_token).get(config.identity_claim_key)
+

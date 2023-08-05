@@ -84,30 +84,31 @@ def refresh_expiring_jwts(user_class=None):
 
     jwt_header = jwt.get_unverified_header(enc_access_token)
 
-    user_dict = jwt_user.load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
-    if not user_dict or not user_dict.get('loaded_user'):
+    # ensure the user_id in the cookies matches the access and refresh tokens from the tables
+    # TODO - shouldn't this check be in token validation?
+    user_obj = jwt_user.load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
+    if not user_obj:
         _logger.warning(f'{method}: unable to load user from decoded access token: {json.dumps(dec_access_token)},'+
                         ' cannot refresh access token')
         jwt_user.set_no_user()
         return
 
-    # ensure the user_id in the cookies matches the access and refresh tokens from the tables
-    user_obj = user_dict["loaded_user"]
-    user_id = user_obj.id
-    if found_access_token.user_id != user_id:
-        _logger.warning(f'{method}: access token #{found_access_token.id} relates to user #{found_access_token.user_id} ' +
-                        f'instead of expected user #{user_id}. Cannot refresh')
+    if found_access_token.user_id != user_obj.id:
+        _logger.warning(
+            f'{method}: access token #{found_access_token.id} relates to user #{found_access_token.user_id} ' +
+            f'instead of expected user #{user_obj.id}. Cannot refresh')
         jwt_user.set_no_user()
         return
 
-    if found_access_token.user_id != user_id:
-        _logger.warning(f'{method}: refresh token #{found_access_token.id} relates to user #{found_access_token.user_id}'+
-                        f' instead of expected user #{user_id}. Cannot refresh')
+    if found_refresh_token.user_id != user_obj.id:
+        _logger.warning(
+            f'{method}: refresh token #{found_refresh_token.id} relates to user #{found_refresh_token.user_id}'+
+            f' instead of expected user #{user_obj.id}. Cannot refresh')
         jwt_user.set_no_user()
         return
 
     # tokens have passed validation and can be refreshed
-    _logger.info(f'{method}: user #{user_id} {-1 * tokens.expires_in_seconds(expired_access_token)} seconds since ' +
+    _logger.info(f'{method}: user #{user_obj.id} {-1 * tokens.expires_in_seconds(expired_access_token)} seconds since ' +
                  f'access token expiration. Refreshing access token ...')
 
     # refresh the access token

@@ -1,7 +1,6 @@
 __version__ = ".1"
 
-# TODO - if token updates halfway through a set of requests, some requests won't yet have the updated cookies
-# TODO - don't refresh tokens if the user is already logged out
+# TODO - don't refresh tokens if the user has been logged out
 # TODO - packaging
 # TODO - fix CSRF
 
