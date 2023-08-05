@@ -659,14 +659,18 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
 
     # access and refresh tokens not in tables?
     found_access_token, is_just_expired_access_token = find_token_object_by_string(user_id=user_id,
-                                                                                    token_class=access_token_class,
-                                                                                    encrypted_token=enc_access_token)
+                                                                                   token_class=access_token_class,
+                                                                                   encrypted_token=enc_access_token)
 
     found_refresh_token, _ = find_token_object_by_string(user_id=user_id,
                                                          token_class=refresh_token_class,
                                                          encrypted_token=enc_refresh_token)
 
     user_text = f'for user #{user_id}' if user_id else ''
+    if found_access_token and is_just_expired_access_token:
+        _logger.info(
+            f'{method}: {user_text} is using a just-expired token {utils.shorten(enc_access_token, 30)} == ' +
+            f'{utils.shorten(found_access_token.old_token, 30)} ')
 
     if not found_access_token:
         _logger.error(f'{method}: access token ({utils.shorten(enc_access_token, 30)}) {user_text} not found ' +

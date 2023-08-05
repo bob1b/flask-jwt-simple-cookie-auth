@@ -62,7 +62,7 @@ def refresh_expiring_jwts(user_class=None):
 
     # if the access token is a "just expired" token, then treat it as valid for the next short interval
     if is_just_expired_access_token:
-        _logger.info(f"{method}: access token has 'just expired', so it's good for another minute")
+        _logger.info(f"{method}: access token has 'just expired', so there's nothing to refresh")
         return
 
     # if the access token hasn't expired yet, then we don't need to do anything
