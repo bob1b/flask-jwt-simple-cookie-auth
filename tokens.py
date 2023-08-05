@@ -4,6 +4,7 @@ import uuid
 import logging
 import traceback
 
+from sqlalchemy import and_
 from json import JSONEncoder
 from hmac import compare_digest
 from jwt import ExpiredSignatureError
@@ -507,17 +508,47 @@ def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
     return token["csrf"]
 
 
-def find_token_object_by_string(encrypted_token: str,
-                                token_class: Any,
-                                user_id: Optional[int]=None,
-                                return_all: bool = False) -> Any:
+def find_token_object_by_string(
+        encrypted_token: str,
+        token_class: Any,
+        user_id: Optional[int]=None,
+        allow_just_expired_tokens=True,
+        token_expiration_window=timedelta(minutes=1),
+) -> Tuple[object, bool]:
+    """
+        returns a tuple of the matching token (there should only ever be one) and a boolean indicating if this is a
+        "just expired" token
+    """
+    method = f'find_token_object_by_string({token_class}, {utils.shorten(encrypted_token, 20)}, user_id={user_id})'
+    is_just_expired_token = False
+    jwt_man = jwt_manager.get_jwt_manager()
+    access_token_class, refresh_token_class = jwt_man.get_token_classes()
+
     token_query = token_class.query.filter_by(token=encrypted_token)
     if user_id:
         token_query = token_query.filter_by(user_id=user_id)
 
-    if return_all:
-        return token_query.all()
-    return token_query.one_or_none()
+    # If we are searching for an access token, and we didn't find a matching non-expired token, and if
+    # allow_just_expired_tokens == True, then we can then check search for a "just expired" token
+    if allow_just_expired_tokens and not token_query.all() and token_class == access_token_class:
+        is_just_expired_token = True
+        token_query = token_class.query.filter(
+            and_(token_class.old_token == encrypted_token,
+                 datetime.utcnow() <= token_class.old_token_expired_at + token_expiration_window)
+        )
+        if user_id:
+            token_query = token_query.filter_by(user_id=user_id)
+
+    # fetch all results and warn if we get more than one. Then return 0 or 1 result anyway
+    query_result = token_query.all()
+    if len(query_result) > 1:
+        _logger.warning(f'{method}: search for token yielded {len(query_result)} results, when there should only be ' +
+                        'one in the table. Returning the first result')
+
+    if len(query_result) == 0:
+        return None, is_just_expired_token
+    else: # len = 1: normal behavior
+        return query_result[0], is_just_expired_token
 
 
 def token_dict_expires_in_seconds(dec_token):
@@ -627,21 +658,23 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> None:
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # access and refresh tokens not in tables?
-    access_token_found = access_token_class.search_by_token_string(enc_access_token, user_id=user_id)
-    refresh_token_query = refresh_token_class.query.filter_by(token=enc_refresh_token)
+    found_access_token, is_just_expired_access_token = find_token_object_by_string(user_id=user_id,
+                                                                                    token_class=access_token_class,
+                                                                                    encrypted_token=enc_access_token)
 
-    user_text = ''
-    if user_id:
-        refresh_token_query = refresh_token_query.filter_by(user_id=user_id)
-        user_text = f'for user #{user_id}'
+    found_refresh_token, _ = find_token_object_by_string(user_id=user_id,
+                                                         token_class=refresh_token_class,
+                                                         encrypted_token=enc_refresh_token)
 
-    if not access_token_found:
+    user_text = f'for user #{user_id}' if user_id else ''
+
+    if not found_access_token:
         _logger.error(f'{method}: access token ({utils.shorten(enc_access_token, 30)}) {user_text} not found ' +
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # refresh token not in table?
-    if not refresh_token_query.all():
+    if not found_refresh_token:
         _logger.error(f'{method}: refresh token ({utils.shorten(enc_access_token, 30)}) {user_text} not found '+
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
