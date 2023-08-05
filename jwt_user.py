@@ -136,6 +136,7 @@ def create_or_update_user_access_token(user_obj, fresh=False, update_existing=No
         # old token
         update_existing.old_token = update_existing.token
         update_existing.old_token_expired_at = datetime.utcnow()
+        _logger.info(f"{method}: old token: {utils.shorten(update_existing.old_token, 30)}, expired at {update_existing.old_token_expired_at}")
 
         # Update the access token value and user agent
         update_existing.token = access_token
