@@ -5,7 +5,9 @@ from . import view_decorators
 
 # TODO - don't refresh tokens if the user has been logged out
 # TODO - packaging
-# TODO - fix CSRF
+# TODO - reenable CSRF
+# TODO _ figure out why flask.g (and/or the ctx) isn't getting cleared/popped after the request ends
+# TODO - unit tests
 
 
 """
