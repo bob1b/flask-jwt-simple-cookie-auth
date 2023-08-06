@@ -1,5 +1,8 @@
 __version__ = ".1"
 
+from . import jwt_user
+from . import view_decorators
+
 # TODO - don't refresh tokens if the user has been logged out
 # TODO - packaging
 # TODO - fix CSRF

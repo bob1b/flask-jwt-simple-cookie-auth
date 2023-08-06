@@ -37,6 +37,9 @@ def logout_user(user_obj, logout_all_sessions=False):
     access_token_class, refresh_token_class = jwt_man.get_token_classes()
     db = jwt_man.get_db()
 
+    if logout_all_sessions:
+        return user_obj.logout_all_user_sessions()
+
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
         user_tokens = []
 
@@ -83,7 +86,18 @@ def logout_user(user_obj, logout_all_sessions=False):
         set_no_user()
 
 
-def remove_user_expired_tokens(user_obj: object):
+def logout_all_user_sessions(self):
+    """ Flask shell method """
+    if utils.is_flask_shell():
+        yes_no = input(f'This will log out ALL user sessions for user: {self}. OK? [y/N]')
+        if yes_no.lower() != 'y':
+            print("Canceled. No changes")
+            return
+
+    self.remove_user_expired_tokens(expire_all_tokens=True)
+
+
+def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
     """
         Remove expired access and refresh tokens for this user. Access Tokens expire in a shorter amount of time than
           Refresh Tokens, but Access Tokens can be refreshed. So, only consider Access tokens to be expired if they
@@ -105,7 +119,7 @@ def remove_user_expired_tokens(user_obj: object):
 
     for token_obj in user_tokens:
         # check if this token is not refreshable
-        if not tokens.token_is_refreshable(token_obj):
+        if not tokens.token_is_refreshable(token_obj) or expire_all_tokens:
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
@@ -113,8 +127,9 @@ def remove_user_expired_tokens(user_obj: object):
             db.session.delete(token_obj)
     if removed_access_count + removed_refresh_count > 0:
         db.session.commit()
-        _logger.info(f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' +
-                     'refresh tokens')
+        message = f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' + \
+                   'refresh tokens'
+        _logger.info(message)
 
 
 def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None):
