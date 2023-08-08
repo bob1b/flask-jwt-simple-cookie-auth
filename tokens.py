@@ -8,8 +8,8 @@ from sqlalchemy import and_
 from json import JSONEncoder
 from hmac import compare_digest
 from jwt import ExpiredSignatureError
-from flask import (request, g, current_app)
 from datetime import (datetime, timedelta, timezone)
+from flask import (request, g, current_app, make_response)
 from typing import (Any, Iterable, Type, Union, Optional, Tuple)
 
 from . import utils
@@ -392,6 +392,9 @@ def encode_jwt(nbf: Optional[bool] = None,
 def after_request(response):
     """ Set the new access token as a response cookie """
     method = 'after_request()'
+    if type(response) == str:
+        response = make_response(response)
+
     if hasattr(g, "new_access_token"):
         _logger.info(f"{method}: g.new_access_token = {utils.shorten(g.new_access_token, 40)} ***")
         cookies.set_access_cookies(response, g.new_access_token)
