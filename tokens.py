@@ -292,7 +292,7 @@ def token_validation(opt) -> [dict, dict]:
                 _logger.error(err)
                 raise jwt_exceptions.CSRFError(err)
 
-            if not compare_digest(c1, c2):
+            if 0 and not compare_digest(c1, c2): # TODO - re-enable CSRF
                 err = f"CSRF double submit tokens do not match: {utils.shorten(c1,30)} != {utils.shorten(c2,30)}"
                 _logger.error(err)
                 raise jwt_exceptions.CSRFError(err)

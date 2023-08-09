@@ -263,7 +263,6 @@ def get_current_user() -> Union[object, None]:
         return
 
     dec_access_token = tokens.get_jwt()
-    print("get_current_user(): jwt_user_dict = ", dec_access_token)
     if dec_access_token is None:
         return
     return load_user(jwt_header={}, dec_access_token=dec_access_token)
