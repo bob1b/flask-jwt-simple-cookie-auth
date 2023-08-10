@@ -23,7 +23,7 @@ def get_refresh_cookie_value(req: Request = None) -> dict or None:
     return req.cookies.get(config.refresh_cookie_name)
 
 
-def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_age=None, domain=None) -> None:
+def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: str, max_age=None, domain=None) -> None:
     """
         Modify a Flask Response to set a cookie containing the access/refresh JWT. Also sets the corresponding CSRF
         cookies
@@ -58,15 +58,24 @@ def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_ag
         'max_age': max_age or config.cookie_max_age
     }
 
-    response.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
-
-    if config.csrf_protect:
-        response.set_cookie(
-            csrf_cookie_name,
-            value=tokens.get_csrf_token_from_encoded_token(encoded_token),
-            httponly=True,
-            **opt
-        )
+    if type(response) == tuple:
+        response[0].set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
+        if config.csrf_protect:
+            response[0].set_cookie(
+                csrf_cookie_name,
+                value=tokens.get_csrf_token_from_encoded_token(encoded_token),
+                httponly=True,
+                **opt
+            )
+    else:
+        response.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
+        if config.csrf_protect:
+            response.set_cookie(
+                csrf_cookie_name,
+                value=tokens.get_csrf_token_from_encoded_token(encoded_token),
+                httponly=True,
+                **opt
+            )
 
 
 def set_access_cookies(response: Response, encoded_access_token: str, max_age=None, domain=None) -> None:
@@ -92,7 +101,7 @@ def unset_jwt_cookies(response: Response, domain: Optional[str] = None) -> None:
     unset_cookies('refresh', response, domain)
 
 
-def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = None) -> None:
+def unset_cookies(cookie_type: str, response: Response or tuple, domain: Optional[str] = None) -> None:
     """
         Modify a Flask Response to delete the cookie containing an access or refresh JWT. Also deletes the corresponding
         CSRF cookie if applicable
@@ -120,7 +129,12 @@ def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = 
     }
 
     _logger.info(f'{method}: unsetting access cookies')
-    response.set_cookie(cookie_name, value="", httponly=True, **opt)
+    if type(response) == tuple:
+        response[0].set_cookie(cookie_name, value="", httponly=True, **opt)
+        if config.csrf_protect:
+            response[0].set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
 
-    if config.csrf_protect:
-        response.set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
+    else:
+        response.set_cookie(cookie_name, value="", httponly=True, **opt)
+        if config.csrf_protect:
+            response.set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
