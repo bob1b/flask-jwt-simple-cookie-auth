@@ -201,7 +201,7 @@ def set_current_user(jwt_header, dec_access_token):
     g._jwt_extended_jwt_header = jwt_header
 
     user_obj = load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
-    print(f"set_crrent_user: found user_obj: {user_obj}")
+
     # call user loader (@jwt.user_lookup_loader), if it was set by the calling application. It should return
     #  {"loaded_user": user}, where user is the sqlalchemy user object for the user id found in jwt_data["sub"]
     g._jwt_extended_jwt_user = {'loaded_user': user_obj.id} # TODO - fresh
