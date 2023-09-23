@@ -107,7 +107,7 @@ def unset_cookies(cookie_type: str, response: Response or tuple, domain: Optiona
         CSRF cookie if applicable
 
         * cookie_type - 'access' or 'refresh'
-        * param response -  A Flask Response object
+        * param response - A Flask Response object
         * param domain  - The domain of the cookie. If this is None, it will use the ``JWT_COOKIE_DOMAIN`` option (see
                           :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
                           JWT_COOKIE_DOMAIN option will be ignored.
