@@ -132,13 +132,17 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
         _logger.info(message)
 
 
-def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None):
+def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None,
+                                       session: Optional[object]=None):
     """ create token and set JWT access cookie (includes CSRF) """
-    method = f"User.create_user_access_token({user_obj})"
+    method = f"User.create_or_update_user_access_token({user_obj})"
 
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, _ = jwt_man.get_token_classes()
-    db = jwt_man.get_db()
+
+    if not session:
+        db = jwt_man.get_db()
+        session = db.session
 
     user_agent = None
     if request:
@@ -164,8 +168,8 @@ def create_or_update_user_access_token(user_obj: object, fresh: bool=False, upda
     else:
         _logger.info(f"{method}: Created new access_token = {utils.shorten(access_token, 40)}")
         access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
-        db.session.add(access_token_obj)
-    db.session.commit()
+        session.add(access_token_obj)
+    session.commit()
     return access_token
 
 
