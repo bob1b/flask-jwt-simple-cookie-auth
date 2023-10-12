@@ -4,8 +4,7 @@ from flask import g
 _logger = logging.getLogger(__name__)
 
 
-def shorten(value, max_len=30):
-    placeholder = '...'
+def shorten_middle(value, max_len=30, placeholder='...'):
     if value is None or value == '':
         return ''
     if len(value) <= max_len or max_len < (len(placeholder) + 2):

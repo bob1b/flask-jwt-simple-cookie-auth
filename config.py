@@ -139,6 +139,11 @@ class _Config(object):
         return delta
 
     @property
+    def access_token_expiration_window(self):
+        """ for just-expired tokens """
+        return current_app.config["JWT_ACCESS_TOKEN_EXPIRATION_WINDOW"]
+
+    @property
     def algorithm(self) -> str:
         return current_app.config["JWT_ALGORITHM"]
 

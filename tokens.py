@@ -55,12 +55,40 @@ def process_and_handle_tokens(fresh: bool = False,
             token will be checked.
 
         :return:
-            A tuple containing the jwt_header and the jwt_data if a valid JWT is present in the request. If
-            ``optional=True`` and no JWT is in the request, ``None`` will be returned instead. Raise an exception if an
-            invalid JWT is in the request.
+            If a valid JWT (or an expired but refreshable JWT) was provided in the request cookies:
+               Returns a dict containing the decoded token data
+            If no JWT was supplied in the cookies, or if the JWT is invalid or expired:
+               Returns ``None``
+            If ``optional=False``, raise an exception if an invalid JWT was supplied
 
-        jwt_header example:    { "alg": "HS256", "typ": "JWT" }
+        # algorithm flow looks something like:
+
+           process_and_handle_tokens()
+               -> jwt.get_unverified_header()
+
+               -> decode_and_validate_tokens()
+                    -> token_validation()
+                        -> decode_token()
+                            -> jwt.decode()
+                        -> verify_token_not_blocklisted()
+                            -> find_token_object_by_string()
+                        -> get_jwt_identity()
+
+                    -> refresh.refresh_expiring_jwts()
+                        # if refreshing the token, the same validation as above is rerun
+                        -> token_validation()
+                            -> decode_token()
+                                -> jwt.decode()
+                            -> verify_token_not_blocklisted()
+                                -> find_token_object_by_string()
+                            -> get_jwt_identity()
+
+                        -> jwt_user.set_no_user()
+
+               -> jwt_user.set_no_user  OR  jwt_user.set_current_user()
+
     """
+    method = f'tokens.process_and_handle_tokens()'
     if request.method in config.exempt_methods:
         return None
 
@@ -71,7 +99,7 @@ def process_and_handle_tokens(fresh: bool = False,
         if not enc_access_token or not enc_refresh_token: # TODO - csrf
             return None
 
-        jwt_header = jwt.get_unverified_header(enc_access_token)
+        jwt_header = jwt.get_unverified_header(enc_access_token) # example jwt_header:  {"alg": "HS256", "typ": "JWT"}
 
         opt = {
             "fresh": fresh,
@@ -93,34 +121,58 @@ def process_and_handle_tokens(fresh: bool = False,
         }
 
         # decode_and_validate_tokens() - if the user is using an expired access token, this method will attempt to
-        #                                refresh it using refresh_expiring_jwts(). If the user is using a "just-expired"
+        #                                refresh it using refresh_expiring_jwts(). If the user is using a "just expired"
         #                                access token (which has already been updated, but the user didn't get the
         #                                update yet), then the updated dec_access_token dict is returned by this method
+        print(f'\n{method}: before decode_and_validate_tokens, {displayable_from_encoded_token(opt["enc_access_token"])}\n')
         dec_access_token, dec_refresh_token = decode_and_validate_tokens(opt)
+        print(f'\n\n{method}: after decode_and_validate_tokens, {displayable_from_decoded_token(dec_access_token)}\n\n')
 
     # all exceptions relating to bad tokens should be caught here so that set_no_user() can be called
     except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError, jwt_exceptions.RevokedTokenError) as e:
 
         if type(e) == jwt_exceptions.NoAuthorizationError and not optional:
-            _logger.error(f'{type(e)}: {e}')
+            _logger.error(f'{method}: {type(e)}: {e}')
             raise
 
         if type(e) == ExpiredSignatureError and not no_exception_on_expired:
-            _logger.error(f'{type(e)}: {e}')
+            _logger.error(f'{method}: {type(e)}: {e}')
             raise
+
+        # TODO - the problem is that when a token is refreshed, the following exception is still triggered
+        #   ERROR - tokens.process_and_handle_tokens(): got exception Access token has expired 12 seconds ago - setting no-user
+        _logger.error(f'{method}: got exception {type(e)}: {e} - setting no-user')
         jwt_user.set_no_user()
         return None
 
     except Exception as e:
-        _logger.error(f'process_and_handle_tokens(): exception: {e}, {traceback.format_exc()}')
+        _logger.error(f'{method}: exception: {e}, {traceback.format_exc()}')
         return None
 
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
-    jwt_header = jwt.get_unverified_header(enc_access_token)
+    # jwt_header = jwt.get_unverified_header(enc_access_token)
+    print(f"***** {method}: calling set_current_user(): {displayable_from_decoded_token(dec_access_token)}")
     jwt_user.set_current_user(jwt_header, dec_access_token)
 
     return dec_access_token
+
+
+def displayable_from_decoded_token(decoded_token: dict) -> str:
+    """ return a displayable decoded token format from a decoded token dict """
+    """ example decoded dict: {'fresh': False, 'iat': 1696817640, 'jti': 'f2456a59-3bd3-4ae2-8f82-052f24ac5c20',
+                                   'type': 'access', 'sub': 1, 'nbf': 1696817640,
+                                   'csrf': 'a42a8d84-cca7-46a2-9819-c65fa0584416', 'exp': 1696817700} """
+    exp = f'{token_dict_expires_in_seconds(decoded_token)} sec'
+    jti = decoded_token['jti']
+    token_type = str(decoded_token['type']).upper()
+    return f'<{token_type}: {exp} / {utils.shorten_middle(jti, 15)}>'
+
+
+def displayable_from_encoded_token(encoded_token: str) -> str:
+    """ return a displayable decoded token format from an encoded token """
+    token_dict = decode_token(encoded_token, no_exception=True)
+    return displayable_from_decoded_token(token_dict)
 
 
 def decode_token(encoded_token: str, no_exception=True) -> dict:
@@ -131,11 +183,11 @@ def decode_token(encoded_token: str, no_exception=True) -> dict:
                                 audience=config.decode_audience,
                                 algorithms=config.decode_algorithms,
                                 options={"verify_signature": False})
-        # _logger.info(f"decode_token(): {utils.shorten(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
+        # _logger.info(f"decode_token(): {utils.shorten_middle(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
         return token_dict
 
     except Exception as e:
-        err = f'decode_token(): exception in jwt.decode({utils.shorten(encoded_token, 30)}): {e}'
+        err = f'decode_token(): exception in jwt.decode({utils.shorten_middle(encoded_token, 30)}): {e}'
         _logger.error(err)
         if not no_exception:
             raise
@@ -146,11 +198,15 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         Accepts dict of options, which includes "enc_access_token" and "enc_refresh_token" (from cookies). Performs
         validation on the tokens as they are decoded
 
+        If "auto_refresh" is enabled and the refresh token is valid, then an expired token will be replaced wth a new
+        token.
+
         If validation and decoding was successful, a tuple of the access and refresh dicts is returned. Otherwise, a
         tuple (None, None) is returned
     """
+    method = f'tokens.decode_and_validate_tokens()'
 
-    # decoded tokens (dicts)
+    # decoded token dicts
     dec_access_token = None
     dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
@@ -167,16 +223,23 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
             # if a value was returned, tokens were refreshed
             if ret_val:
                 new_access_token, new_refresh_token = ret_val
+                _logger.info(f"** {method}: refreshed access token {utils.shorten_middle(new_access_token, 30)}")
 
                 # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
                 opt['enc_access_token'] = new_access_token
                 opt['enc_refresh_token'] = new_refresh_token
+                print(f"validating new access token: {utils.shorten_middle(new_access_token, 30)}")
+
+                # rerun token validation
                 dec_access_token, dec_refresh_token = token_validation(opt)
+                print(f"\ndone validating new access token, {displayable_from_decoded_token(dec_access_token)}")
+                return dec_access_token, dec_refresh_token
 
+        # If set, show exception when token has expired
         if not opt.get('no_exception_on_expired', True):
-            _logger.error(f'{type(e)}: {e}')
+            _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}')
             raise
-
+        print(f"{method}: returning REFRESHED dec_access_token: {displayable_from_decoded_token(dec_access_token)} ")
         return dec_access_token, dec_refresh_token
 
     except jwt_exceptions.NoAuthorizationError as e:
@@ -184,6 +247,7 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
            and not opt['no_exception_on_expired']:
             _logger.error(f'{type(e)}: {e}')
             raise
+        _logger.error(f'{method}: got exception {e} - setting no-user')
         jwt_user.set_no_user()
         return None, None
 
@@ -199,10 +263,15 @@ def token_validation(opt) -> [dict, dict]:
         Throws exceptions when there is a validation issue with the tokens
 
         Returns  dec_access_token dict and dec_refresh_token dict. If the user initiated this request using a
-                 "just-expired" token, the dec_access_token dict for the recently updated access token will be returned
+                 "just expired" token, the dec_access_token dict for the recently updated access token will be returned
     """
     method = f'token_validation()'
     if not opt.get('enc_access_token') or not opt.get('enc_refresh_token'):
+        if not opt.get('enc_access_token'):
+            print("**** enc_access_token not supplied!")
+        if not opt.get('enc_refresh_token'):
+            print("**** enc_refresh_token not supplied!")
+
         return None, None
 
     # options = {"verify_aud": opt['verify_aud']} # verify audience   # TODO
@@ -232,12 +301,14 @@ def token_validation(opt) -> [dict, dict]:
 
     # check if the access and refresh tokens are in the table and match the claimed user id
     if not opt.get('skip_revocation_check', False):
-        found_token, is_just_expired_token = verify_token_not_blocklisted(opt, user_id=user_id)
-        # if we found a just-expired token, we need to update the decoded access token dict that we are using.
+        found_token, is_just_expired_token = verify_token_not_block_listed(opt, user_id=user_id)
+        # if we found a 'just expired' token, we need to update the decoded access token dict that we are using.
         # Otherwise, the user info in the token string will be out-of-date
         if found_token and is_just_expired_token:
-            _logger.info(f'{method}: user is using a just-expired token, updating token dict')
+            _logger.info(f'{method}: user is using a "just-expired" token, using new token = ' +
+                         f'{utils.shorten_middle(found_token.token, 30)}')
             dec_access_token = decode_token(found_token.token)
+            _logger.info(f'{method}: updated "just expired" to new value: {dec_access_token}')
 
     # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
@@ -256,10 +327,11 @@ def token_validation(opt) -> [dict, dict]:
     # check if either token has expired
     access_expires = token_dict_expires_in_seconds(dec_access_token)
     if access_expires <= 0:
-        raise ExpiredSignatureError(f'Access token has expired {access_expires} seconds ago')
+        raise ExpiredSignatureError(f'Access token {displayable_from_decoded_token(dec_access_token)} has expired ' +
+                                    f'{-1 * access_expires} seconds ago')
     refresh_expires = token_dict_expires_in_seconds(dec_refresh_token)
     if refresh_expires <= 0:
-        raise ExpiredSignatureError(f'Refresh token has expired {refresh_expires} seconds ago')
+        raise ExpiredSignatureError(f'Refresh token has expired {-1 * refresh_expires} seconds ago')
 
     custom_verification_for_token(opt['jwt_header'], dec_access_token)
 
@@ -293,7 +365,7 @@ def token_validation(opt) -> [dict, dict]:
                 raise jwt_exceptions.CSRFError(err)
 
             if 0 and not compare_digest(c1, c2): # TODO - re-enable CSRF
-                err = f"CSRF double submit tokens do not match: {utils.shorten(c1,30)} != {utils.shorten(c2,30)}"
+                err = f"CSRF double submit tokens do not match: {utils.shorten_middle(c1,30)} != {utils.shorten_middle(c2,30)}"
                 _logger.error(err)
                 raise jwt_exceptions.CSRFError(err)
 
@@ -390,17 +462,17 @@ def encode_jwt(nbf: Optional[bool] = None,
 
 
 def after_request(response):
-    """ Set the new access token as a response cookie """
+    """ If tokens were refreshed during this request, then set the new access token response cookie """
     method = 'after_request()'
     if type(response) == str:
         response = make_response(response)
 
     if hasattr(g, "new_access_token"):
-        _logger.info(f"{method}: g.new_access_token = {utils.shorten(g.new_access_token, 40)} ***")
+        _logger.info(f"{method}: g.new_access_token = {utils.shorten_middle(g.new_access_token, 40)} ***")
         cookies.set_access_cookies(response, g.new_access_token)
 
     if hasattr(g, "new_refresh_token"):
-        _logger.info(f"{method}: g.new_refresh_token = {utils.shorten(g.new_refresh_token, 40)} ***")
+        _logger.info(f"{method}: g.new_refresh_token = {utils.shorten_middle(g.new_refresh_token, 40)} ***")
         cookies.set_refresh_cookies(response, g.new_refresh_token)
 
     # Unset jwt cookies in the response (e.g. user logged out)
@@ -527,27 +599,47 @@ def find_token_object_by_string(
         encrypted_token: str,
         token_class: Any,
         user_id: Optional[int]=None,
+        token_expiration_window=None,
         allow_just_expired_tokens=True,
-        token_expiration_window=timedelta(minutes=1),
+        session: Optional[object]=None, # TODO - might need to use this to lock the row correctly
+        lock_if_found: Optional[bool]=False,
 ) -> Tuple[object, bool]:
     """
         returns a tuple of the matching token (there should only ever be one) and a boolean indicating if this is a
         "just expired" token
     """
-    method = f'find_token_object_by_string({token_class}, {utils.shorten(encrypted_token, 20)}, user_id={user_id})'
+    method = f'find_token_object_by_string({token_class}, {utils.shorten_middle(encrypted_token, 20)}, ' + \
+             f'user_id={user_id})'
     is_just_expired_token = False
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, refresh_token_class = jwt_man.get_token_classes()
+    token_expiration_window = token_expiration_window or config.access_token_expiration_window
 
-    token_query = token_class.query.filter_by(token=encrypted_token)
+    if session:
+        token_query = session.query(token_class)
+    else:
+        token_query = token_class.query
+
+    token_query = token_query.filter_by(token=encrypted_token)
     if user_id:
         token_query = token_query.filter_by(user_id=user_id)
+
+    # lock the row
+    if lock_if_found:
+        print("\n\nLOCK\n")
+        token_query = token_query.with_for_update()
 
     # If we are searching for an access token, and we didn't find a matching non-expired token, and if
     # allow_just_expired_tokens == True, then we can then check search for a "just expired" token
     if allow_just_expired_tokens and not token_query.all() and token_class == access_token_class:
         is_just_expired_token = True
-        token_query = token_class.query.filter(
+
+        if session:
+            token_query = session.query(token_class)
+        else:
+            token_query = token_class.query
+
+        token_query = token_query.filter(
             and_(token_class.old_token == encrypted_token,
                  datetime.utcnow() <= token_class.old_token_expired_at + token_expiration_window)
         )
@@ -641,7 +733,7 @@ def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> Tuple[object, bool]:
+def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> Tuple[object, bool]:
     """
         Call the callback first, if there is one. Then check if the access and refresh tokens are present, for the
         user_id if given, in the AccessToken and RefreshToken tables. If not, then the tokens are considered to be
@@ -650,10 +742,10 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> Tuple[obj
         Raises a RevokedTokenError exception if either token is blocklisted
 
         Returns a tuple of:
-          * the found token (in the case of the user using a just-expired token, return the updated token)
-          * a boolean indicating if the found token is a just-expired token
+          * the found token (in the case of the user using a "just expired" token, return the updated token)
+          * a boolean indicating if the found token is a "just expired" token
     """
-    method = f'verify_token_not_blocklisted()'
+    method = f'verify_token_not_block_listed()'
 
     jwt_man = jwt_manager.get_jwt_manager()
 
@@ -688,17 +780,17 @@ def verify_token_not_blocklisted(opt: dict, user_id: Optional[int]) -> Tuple[obj
     user_text = f'for user #{user_id}' if user_id else ''
     if found_access_token and is_just_expired_access_token:
         _logger.info(
-            f'{method}: {user_text} is using a just-expired token {utils.shorten(enc_access_token, 30)} == ' +
-            f'{utils.shorten(found_access_token.old_token, 30)} ')
+            f'{method}: {user_text} is using a "just expired" token {utils.shorten_middle(enc_access_token, 30)} == ' +
+            f'{utils.shorten_middle(found_access_token.old_token, 30)} ')
 
     if not found_access_token:
-        _logger.error(f'{method}: access token ({utils.shorten(enc_access_token, 30)}) {user_text} not found ' +
+        _logger.error(f'{method}: access token ({utils.shorten_middle(enc_access_token, 30)}) {user_text} not found ' +
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # refresh token not in table?
     if not found_refresh_token:
-        _logger.error(f'{method}: refresh token ({utils.shorten(enc_access_token, 30)}) {user_text} not found '+
+        _logger.error(f'{method}: refresh token ({utils.shorten_middle(enc_access_token, 30)}) {user_text} not found '+
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
@@ -801,6 +893,3 @@ def verify_token_is_fresh(jwt_header: Union[dict, None], jwt_data: dict) -> None
             err = "Fresh token required"
             _logger.error(err)
             raise jwt_exceptions.FreshTokenRequired(err, jwt_header, jwt_data)
-
-
-

@@ -23,8 +23,8 @@ def login_user(user_obj: object):
     g.new_access_token = create_or_update_user_access_token(user_obj, fresh=True)
     g.new_refresh_token = create_user_refresh_token(user_obj)
 
-    _logger.info(f"login_user(): g.new_access_token = {utils.shorten(g.new_access_token, 30)}")
-    _logger.info(f"              g.new_refresh_token = {utils.shorten(g.new_refresh_token, 30)}")
+    _logger.info(f"login_user(): g.new_access_token = {utils.shorten_middle(g.new_access_token, 30)}")
+    _logger.info(f"              g.new_refresh_token = {utils.shorten_middle(g.new_refresh_token, 30)}")
 
     # remove tokens for this user that are completely expired (non-refreshable)
     remove_user_expired_tokens(user_obj)
@@ -51,7 +51,7 @@ def logout_user(user_obj, logout_all_sessions=False):
             found_access_token, is_just_expired_access_token = tokens.find_token_object_by_string(
                 user_id=user_obj.id,
                 token_class=access_token_class,
-                allow_just_expired_tokens=True, # if user logged out using a just-expired token, then revoke that token
+                allow_just_expired_tokens=True, # if user logged out using a 'just expired' token, then revoke that token
                 encrypted_token=access_cookie_value,
             )
             if not found_access_token:
@@ -154,19 +154,20 @@ def create_or_update_user_access_token(user_obj: object, fresh: bool=False, upda
 
     if update_existing and type(update_existing) == access_token_class:
         _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = " +
-                     utils.shorten(access_token, 40))
+                     utils.shorten_middle(access_token, 40))
 
         # Save old token value and when it expired. We can use this for very recent requests that are still using the
         # old token
         update_existing.old_token = update_existing.token
         update_existing.old_token_expired_at = datetime.utcnow()
-        _logger.info(f"{method}: old token: {utils.shorten(update_existing.old_token, 30)}, expired at {update_existing.old_token_expired_at}")
+        _logger.info(f"{method}: old token: {utils.shorten_middle(update_existing.old_token, 30)}, expired at "+
+                     f"{update_existing.old_token_expired_at}")
 
         # Update the access token value and user agent
         update_existing.token = access_token
         update_existing.user_agent = user_agent
     else:
-        _logger.info(f"{method}: Created new access_token = {utils.shorten(access_token, 40)}")
+        _logger.info(f"{method}: Created new access_token = {utils.shorten_middle(access_token, 40)}")
         access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
         session.add(access_token_obj)
     session.commit()
@@ -185,7 +186,7 @@ def create_user_refresh_token(user_obj: object):
     g.unset_tokens = False
     g.new_refresh_token = refresh_token
 
-    _logger.info(f"{method}: Created new refresh_token = {utils.shorten(refresh_token, 40)}")
+    _logger.info(f"{method}: Created new refresh_token = {utils.shorten_middle(refresh_token, 40)}")
     refresh_token_obj = refresh_token_class(token=refresh_token, user_id=user_obj.id)
     db.session.add(refresh_token_obj)
     db.session.commit()
@@ -200,12 +201,15 @@ def set_no_user():
 
 
 def set_current_user(jwt_header, dec_access_token):
+    method = f'jwt_user.set_current_user()'
     g.unset_tokens = False
     g._jwt_extended_jwt = dec_access_token
     g._jwt_extended_jwt_header = jwt_header
 
     user_obj = load_user(jwt_header=jwt_header, dec_access_token=dec_access_token)
     if not user_obj:
+        _logger.warning(f'{method}: attempted to load user from jwt_header={jwt_header}, dec_access_token=' +
+                        f'{dec_access_token}. Setting no-user')
         set_no_user()
         return
 
