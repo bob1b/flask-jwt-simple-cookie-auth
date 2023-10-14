@@ -34,6 +34,7 @@ from . import view_decorators
 # TODO - reenable CSRF
 # TODO _ figure out why flask.g (and/or the ctx) isn't getting cleared/popped after the request ends
 # TODO - unit tests
+# TODO - add the default callbacks functionality back in
 # TODO #####################################
 
 """
@@ -41,7 +42,6 @@ from . import view_decorators
     * config.py - config handling for JWT, mainly @property methods
     * default_callbacks.py - callbacks for things like user_identity_loader and user_lookup_loader
     * jwt_exceptions.py - exception classes, some containing __init__ code
-    * internal_utils.py - small set of utils used by package but supposedly not available outside it
     * jwt_manager.py - 
     * py.typed - empty
     * tokens.py - token methods that don't belong in another file like user.py

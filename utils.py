@@ -1,8 +1,16 @@
+import sys
 import logging
-from flask import g
+from .tokens_utils import token_dict_expires_in_seconds
+from .tokens_encode_decode import decode_token
+from flask import (g, current_app, Flask)
+
 
 _logger = logging.getLogger(__name__)
 
+def is_flask_shell():
+    if len(sys.argv) > 1:
+        return sys.argv[1] == 'shell'
+    return False
 
 def shorten_middle(value, max_len=30, placeholder='...'):
     if value is None or value == '':

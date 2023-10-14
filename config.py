@@ -1,12 +1,9 @@
 import logging
-from json import JSONEncoder
 from flask import current_app
 from jwt.algorithms import requires_cryptography
 from datetime import (datetime, timedelta, timezone)
-from typing import (Iterable, List, Optional, Type, Union)
-
+from typing import (Iterable, List, Optional, Union)
 from .types import ExpiresDelta
-from .internal_utils import get_json_encoder
 
 _logger = logging.getLogger(__name__)
 
@@ -202,10 +199,6 @@ class _Config(object):
     @property
     def error_msg_key(self) -> str:
         return current_app.config["JWT_ERROR_MESSAGE_KEY"]
-
-    @property
-    def json_encoder(self) -> Type[JSONEncoder]:
-        return get_json_encoder(current_app)
 
     @property
     def decode_audience(self) -> Union[str, Iterable[str]]:

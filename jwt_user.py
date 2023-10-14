@@ -9,7 +9,10 @@ from . import utils
 from . import tokens
 from . import cookies
 from . import jwt_manager
-from .config import config
+from . import tokens_utils
+from . import tokens_create
+from . import tokens_cookies
+from . import tokens_encode_decode
 from . import jwt_exceptions
 
 _logger = logging.getLogger(__name__)
@@ -44,7 +47,7 @@ def logout_user(user_obj, logout_all_sessions=False):
         user_tokens = []
 
         # invalidate access token
-        access_cookie_value = cookies.get_access_cookie_value()
+        access_cookie_value = tokens_cookies.get_access_cookie_value()
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
@@ -61,7 +64,7 @@ def logout_user(user_obj, logout_all_sessions=False):
                 user_tokens = user_tokens + [found_access_token]
 
         # invalidate refresh token
-        refresh_cookie_value = cookies.get_refresh_cookie_value()
+        refresh_cookie_value = tokens_cookies.get_refresh_cookie_value()
         if not refresh_cookie_value:
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
@@ -119,7 +122,7 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 
     for token_obj in user_tokens:
         # check if this token is not refreshable
-        if not tokens.token_is_refreshable(token_obj) or expire_all_tokens:
+        if not tokens_utils.token_is_refreshable(token_obj) or expire_all_tokens:
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
@@ -148,7 +151,7 @@ def create_or_update_user_access_token(user_obj: object, fresh: bool=False, upda
     if request:
         user_agent = request.headers.get("User-Agent")
 
-    access_token = tokens.create_access_token(identity=user_obj.id, fresh=fresh)
+    access_token = tokens_create.create_access_token(identity=user_obj.id, fresh=fresh)
     g.unset_tokens = False
     g.new_access_token = access_token
 
@@ -182,7 +185,7 @@ def create_user_refresh_token(user_obj: object):
     _, refresh_token_class = jwt_man.get_token_classes()
 
     db = jwt_man.get_db()
-    refresh_token = tokens.create_refresh_token(identity=user_obj.id)
+    refresh_token = tokens_create.create_refresh_token(identity=user_obj.id)
     g.unset_tokens = False
     g.new_refresh_token = refresh_token
 
@@ -230,7 +233,7 @@ def load_user(jwt_header: dict, dec_access_token: dict) -> Optional[object]:
     if not dec_access_token:
         return None
 
-    identity = tokens.get_jwt_identity(dec_access_token)
+    identity = tokens_utils.get_jwt_identity(dec_access_token)
     jwt_man = jwt_manager.get_jwt_manager()
     user = jwt_man.user_lookup_callback and jwt_man.user_lookup_callback(jwt_header, dec_access_token)
     if user is None:
@@ -246,12 +249,12 @@ def has_user_lookup() -> bool:
 
 
 def get_user_token_info():
-    access_token = tokens.get_token_from_cookie('access', no_exception=True)
+    access_token = tokens_cookies.get_token_from_cookie('access', no_exception=True)
     if not access_token:
         return {}
-    data = tokens.decode_token(access_token, no_exception=True)
+    data = tokens_encode_decode.decode_token(access_token, no_exception=True)
     if data and 'exp' in data:
-        exp_seconds = tokens.token_dict_expires_in_seconds(data)
+        exp_seconds = tokens_utils.token_dict_expires_in_seconds(data)
         if exp_seconds >= 0:
             data['exp_seconds'] = f'exp {exp_seconds} seconds from now'
         else:
@@ -273,7 +276,7 @@ def get_current_user() -> Union[object, None]:
         _logger.info('current_user(): got g.unset_tokens, returning no-user')
         return
 
-    dec_access_token = tokens.get_jwt()
+    dec_access_token = tokens_utils.get_jwt()
     if dec_access_token is None:
         return
     return load_user(jwt_header={}, dec_access_token=dec_access_token)

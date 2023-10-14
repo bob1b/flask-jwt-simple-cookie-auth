@@ -5,9 +5,8 @@ from flask import (g, current_app)
 
 from . import utils
 from . import tokens
-from . import cookies
+from . import jwt_request
 from .config import config
-
 
 _logger = logging.getLogger(__name__)
 
@@ -44,7 +43,7 @@ def jwt_sca(fresh: bool = False,
             response = current_app.ensure_sync(fn)(*args, **kwargs)
 
             # update any refreshed cookies in the response
-            response = tokens.after_request(response)
+            response = jwt_request.after_request(response)
 
             if config.clear_g_after_decorated_request:
                 utils.clear_g_data()

@@ -5,6 +5,8 @@
 
     https://flask-jwt-extended.readthedocs.io/en/latest/changing_default_behavior.html
     https://flask-jwt-extended.readthedocs.io/en/latest/tokens_from_complex_object.html
+
+    # XXX - these are currently unused
 """
 
 from typing import Any
