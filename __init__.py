@@ -19,6 +19,7 @@ from . import view_decorators
 #   * When then malicious user's access token expires, it can't be refreshed, and the user is logged out. Optionally,
 #     we can invalidate all of that user's session's tokens OR all of that user's tokens
 
+#  TODO - Question: what's the point of having tokens expire if they can be refreshed after expiration?
 #   TODO - refresh the access tokens early and leave the access token in the table as a just-expired token
 #     TODO - ensure that the request has a valid refresh token
 #   TODO - remove just-expired access token records after they are older than refresh token expiration (they can't be
@@ -28,6 +29,13 @@ from . import view_decorators
 #   TODO - intermittently consolidate access tokens having the same refresh token (or session uuid)
 #     TODO - use the refresh token as a session uuid
 #     TODO - send the new token and set the consolidate tokens to expire soon
+
+#  TODO - add the device "Android phone" in the JWT when it's encoded. Then, token revocation should be easy to do
+
+#  TODO - for cookies, check this:
+#         For browsers, use HttpOnly and Secure cookies. cookie. The HttpOnly flag protects the cookies from being
+#         accessed by JavaScript and prevents XSS attack. The Secure flag will only allow cookies to be sent to
+#         servers over HTTPS connection.
 
 # TODO - don't refresh tokens if the user has been logged out
 # TODO - packaging
