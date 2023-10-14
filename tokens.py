@@ -12,6 +12,8 @@ from . import utils
 from . import jwt_user
 from . import jwt_manager
 from . import jwt_exceptions
+
+from . import tokens_utils
 from . import tokens_cookies
 from . import tokens_validation
 
@@ -121,9 +123,9 @@ def process_and_handle_tokens(fresh: bool = False,
         #                                refresh it using refresh_expiring_jwts(). If the user is using a "just expired"
         #                                access token (which has already been updated, but the user didn't get the
         #                                update yet), then the updated dec_access_token dict is returned by this method
-        print(f'\n{method}: before decode_and_validate_tokens, {utils.displayable_from_encoded_token(opt["enc_access_token"])}\n')
+        print(f'\n{method}: before decode_and_validate_tokens, {tokens_utils.displayable_from_encoded_token(opt["enc_access_token"])}\n')
         dec_access_token, dec_refresh_token = tokens_validation.decode_and_validate_tokens(opt)
-        print(f'\n\n{method}: after decode_and_validate_tokens, {utils.displayable_from_decoded_token(dec_access_token)}\n\n')
+        print(f'\n\n{method}: after decode_and_validate_tokens, {tokens_utils.displayable_from_decoded_token(dec_access_token)}\n\n')
 
     # all exceptions relating to bad tokens should be caught here so that set_no_user() can be called
     except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError, jwt_exceptions.RevokedTokenError) as e:
@@ -149,7 +151,7 @@ def process_and_handle_tokens(fresh: bool = False,
     # Save these at the very end so that they are only saved in the request context if the token is valid and all
     # callbacks succeed
     # jwt_header = jwt.get_unverified_header(enc_access_token)
-    print(f"***** {method}: calling set_current_user(): {utils.displayable_from_decoded_token(dec_access_token)}")
+    print(f"***** {method}: calling set_current_user(): {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
     jwt_user.set_current_user(jwt_header, dec_access_token)
 
     return dec_access_token

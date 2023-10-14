@@ -59,14 +59,14 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
 
                 # rerun token validation
                 dec_access_token, dec_refresh_token = token_validation(opt)
-                print(f"\ndone validating new access token, {utils.displayable_from_decoded_token(dec_access_token)}")
+                print(f"\ndone validating new access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
                 return dec_access_token, dec_refresh_token
 
         # If set, show exception when token has expired
         if not opt.get('no_exception_on_expired', True):
             _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}')
             raise
-        print(f"{method}: returning REFRESHED dec_access_token: {utils.displayable_from_decoded_token(dec_access_token)} ")
+        print(f"{method}: returning REFRESHED dec_access_token: {tokens_utils.displayable_from_decoded_token(dec_access_token)} ")
         return dec_access_token, dec_refresh_token
 
     except jwt_exceptions.NoAuthorizationError as e:
@@ -153,7 +153,7 @@ def token_validation(opt) -> [dict, dict]:
     # check if either token has expired
     access_expires = tokens_utils.token_dict_expires_in_seconds(dec_access_token)
     if access_expires <= 0:
-        raise ExpiredSignatureError(f'Access token {utils.displayable_from_decoded_token(dec_access_token)} has expired ' +
+        raise ExpiredSignatureError(f'Access token {tokens_utils.displayable_from_decoded_token(dec_access_token)} has expired ' +
                                     f'{-1 * access_expires} seconds ago')
     refresh_expires = tokens_utils.token_dict_expires_in_seconds(dec_refresh_token)
     if refresh_expires <= 0:
