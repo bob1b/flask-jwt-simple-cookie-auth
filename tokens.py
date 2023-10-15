@@ -28,7 +28,7 @@ def process_and_handle_tokens(fresh: bool = False,
                               verify_type: bool = True,
                               auto_refresh: bool = True,
                               skip_revocation_check: bool = False,
-                              no_exception_on_expired: bool = False) -> Optional[Tuple[dict, dict]]:
+                              no_exception_on_expired: bool = False) -> Optional[dict]:
     """
         Handles token validation and auto-refreshing (if enabled by auto_refresh). Catches exceptions raised by token
         validation based on method parameters
@@ -120,9 +120,8 @@ def process_and_handle_tokens(fresh: bool = False,
         }
 
         # decode_and_validate_tokens() - if the user is using an expired access token, this method will attempt to
-        #                                refresh it using refresh_expiring_jwts(). If the user is using a "just expired"
-        #                                access token (which has already been updated, but the user didn't get the
-        #                                update yet), then the updated dec_access_token dict is returned by this method
+        #                                refresh it using refresh_expiring_jwts(). If the token expired and cannot be
+        #                                refreshed, then returns None
         print(f'\n{method}: before decode_and_validate_tokens, {tokens_utils.displayable_from_encoded_token(opt["enc_access_token"])}\n')
         dec_access_token, dec_refresh_token = tokens_validation.decode_and_validate_tokens(opt)
         print(f'\n\n{method}: after decode_and_validate_tokens, {tokens_utils.displayable_from_decoded_token(dec_access_token)}\n\n')
@@ -161,21 +160,16 @@ def find_token_object_by_string(
         encrypted_token: str,
         token_class: Any,
         user_id: Optional[int]=None,
-        token_expiration_window=None,
-        allow_just_expired_tokens=True,
         session: Optional[object]=None, # TODO - might need to use this to lock the row correctly
         lock_if_found: Optional[bool]=False,
-) -> Tuple[object, bool]:
+) -> Optional[object]:
     """
-        returns a tuple of the matching token (there should only ever be one) and a boolean indicating if this is a
-        "just expired" token
+        Attempts to find the encrypted token string in the token table associated with `token_class`
+
+        returns: the matching token or None
     """
     method = f'find_token_object_by_string({token_class}, {utils.shorten_middle(encrypted_token, 20)}, ' + \
              f'user_id={user_id})'
-    is_just_expired_token = False
-    jwt_man = jwt_manager.get_jwt_manager()
-    access_token_class, refresh_token_class = jwt_man.get_token_classes()
-    token_expiration_window = token_expiration_window or config.access_token_expiration_window
 
     if session:
         token_query = session.query(token_class)
@@ -186,35 +180,12 @@ def find_token_object_by_string(
     if user_id:
         token_query = token_query.filter_by(user_id=user_id)
 
-    # lock the row
-    if lock_if_found:
-        print("\n\nLOCK\n")
-        token_query = token_query.with_for_update()
-
-    # If we are searching for an access token, and we didn't find a matching non-expired token, and if
-    # allow_just_expired_tokens == True, then we can then check search for a "just expired" token
-    if allow_just_expired_tokens and not token_query.all() and token_class == access_token_class:
-        is_just_expired_token = True
-
-        if session:
-            token_query = session.query(token_class)
-        else:
-            token_query = token_class.query
-
-        token_query = token_query.filter(
-            and_(token_class.old_token == encrypted_token,
-                 datetime.utcnow() <= token_class.old_token_expired_at + token_expiration_window)
-        )
-        if user_id:
-            token_query = token_query.filter_by(user_id=user_id)
-
     # fetch all results and warn if we get more than one. Then return 0 or 1 result anyway
     query_result = token_query.all()
     if len(query_result) > 1:
         _logger.warning(f'{method}: search for token yielded {len(query_result)} results, when there should only be ' +
                         'one in the table. Returning the first result')
 
-    if len(query_result) == 0:
-        return None, is_just_expired_token
-    else: # len = 1: normal behavior
-        return query_result[0], is_just_expired_token
+    if len(query_result) < 1:
+        return None
+    return query_result[0]

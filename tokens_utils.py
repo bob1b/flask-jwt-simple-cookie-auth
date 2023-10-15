@@ -61,8 +61,10 @@ def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
 
 
 def token_dict_expires_in_seconds(dec_token):
-    return int(dec_token["exp"] - datetime.timestamp(datetime.now(timezone.utc)))
+    return int(token_dict_expiration(dec_token) - datetime.timestamp(datetime.now(timezone.utc)))
 
+def token_dict_expiration(dec_token):
+    return int(dec_token["exp"])
 
 def expires_in_seconds(token_obj: Any,
                        no_exception: bool = True,
@@ -100,7 +102,7 @@ def expires_in_seconds(token_obj: Any,
     return expires_in
 
 
-def access_token_has_expired(token_obj: Any,
+def access_token_has_expired(token_obj: object,
                              fresh_required: bool = False, # TODO
                              use_refresh_expiration_delta: bool = False) -> bool:
     try:
@@ -108,6 +110,22 @@ def access_token_has_expired(token_obj: Any,
         return expires_in <= 0
     except ExpiredSignatureError as e:
         return True
+
+
+def access_token_percent_expired(token_obj: object) -> float:
+    token_dict = tokens_encode_decode.decode_token(token_obj.token, no_exception=True)
+
+    created_epoch = token_obj.create_date.timestamp()
+    exp_epoch = token_dict_expiration(token_dict)
+
+    print(f"created: {created_epoch}, exp_epoch = {exp_epoch}")
+    total_token_duration_seconds = (exp_epoch - created_epoch)
+    print(f'total duration seconds: {total_token_duration_seconds}')
+
+    expires_in = expires_in_seconds(token_obj)
+    percent = (float(expires_in) / float(total_token_duration_seconds)) * 100.0
+    print(f"token is {percent}% expired")
+    return percent
 
 
 def refresh_token_has_expired(token_obj: Any) -> bool:
@@ -118,9 +136,12 @@ def refresh_token_has_expired(token_obj: Any) -> bool:
         return True
 
 
-def token_is_refreshable(token_obj: Any,) -> bool:
-    is_refreshable = not access_token_has_expired(token_obj, use_refresh_expiration_delta=True)
-    return is_refreshable
+def is_time_to_refresh_the_access_token(token_obj: object) -> bool:
+    """ check if token is expired enough that it can be refreshed """
+    if not token_obj:
+        print("\n\n !!!!!!!is_time_to_refresh_the_access_token(): no token!")
+        return False
+    return access_token_percent_expired(token_obj) >= config.access_refresh_after_percent_expired
 
 
 def displayable_from_decoded_token(decoded_token: dict) -> str:
@@ -128,6 +149,9 @@ def displayable_from_decoded_token(decoded_token: dict) -> str:
     """ example decoded dict: {'fresh': False, 'iat': 1696817640, 'jti': 'f2456a59-3bd3-4ae2-8f82-052f24ac5c20',
                                    'type': 'access', 'sub': 1, 'nbf': 1696817640,
                                    'csrf': 'a42a8d84-cca7-46a2-9819-c65fa0584416', 'exp': 1696817700} """
+    if not decoded_token:
+        return '<No token>'
+
     exp = f'{token_dict_expires_in_seconds(decoded_token)} sec'
     jti = decoded_token['jti']
     token_type = str(decoded_token['type']).upper()

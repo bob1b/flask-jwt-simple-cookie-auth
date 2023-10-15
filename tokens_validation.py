@@ -40,9 +40,6 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
 
     try:
         dec_access_token, dec_refresh_token = token_validation(opt)
-        return dec_access_token, dec_refresh_token
-
-    except ExpiredSignatureError as e:
 
         if opt.get('auto_refresh'):
             ret_val = tokens_refresh.refresh_expiring_jwts()
@@ -61,6 +58,12 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
                 dec_access_token, dec_refresh_token = token_validation(opt)
                 print(f"\ndone validating new access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
                 return dec_access_token, dec_refresh_token
+
+        return dec_access_token, dec_refresh_token
+
+    except ExpiredSignatureError as e:
+
+
 
         # If set, show exception when token has expired
         if not opt.get('no_exception_on_expired', True):
@@ -88,8 +91,7 @@ def token_validation(opt) -> [dict, dict]:
 
         Throws exceptions when there is a validation issue with the tokens
 
-        Returns  dec_access_token dict and dec_refresh_token dict. If the user initiated this request using a
-                 "just expired" token, the dec_access_token dict for the recently updated access token will be returned
+        Returns  `dec_access_token` dict and `dec_refresh_token` dicts
     """
     method = f'token_validation()'
     if not opt.get('enc_access_token') or not opt.get('enc_refresh_token'):
@@ -127,14 +129,7 @@ def token_validation(opt) -> [dict, dict]:
 
     # check if the access and refresh tokens are in the table and match the claimed user id
     if not opt.get('skip_revocation_check', False):
-        found_token, is_just_expired_token = verify_token_not_block_listed(opt, user_id=user_id)
-        # if we found a 'just expired' token, we need to update the decoded access token dict that we are using.
-        # Otherwise, the user info in the token string will be out-of-date
-        if found_token and is_just_expired_token:
-            _logger.info(f'{method}: user is using a "just-expired" token, using new token = ' +
-                         f'{utils.shorten_middle(found_token.token, 30)}')
-            dec_access_token = tokens_encode_decode.decode_token(found_token.token)
-            _logger.info(f'{method}: updated "just expired" to new value: {dec_access_token}')
+        found_token = verify_token_not_block_listed(opt, user_id=user_id) # TODO - should found_token be used for something?
 
     # TODO - where are the jwt_headers verified??? unverified_headers -> jwt_headers
 
@@ -207,7 +202,7 @@ def verify_token_type(decoded_token: dict, is_refresh: bool) -> None:
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> Tuple[object, bool]:
+def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> object:
     """
         Call the callback first, if there is one. Then check if the access and refresh tokens are present, for the
         user_id if given, in the AccessToken and RefreshToken tables. If not, then the tokens are considered to be
@@ -215,9 +210,7 @@ def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> Tuple[ob
 
         Raises a RevokedTokenError exception if either token is blocklisted
 
-        Returns a tuple of:
-          * the found token (in the case of the user using a "just expired" token, return the updated token)
-          * a boolean indicating if the found token is a "just expired" token
+        Returns: the found token. If the token was not valid, an exception would have been raised before returning
     """
     method = f'verify_token_not_block_listed()'
 
@@ -243,22 +236,17 @@ def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> Tuple[ob
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # access and refresh tokens not in tables?
-    found_access_token, is_just_expired_access_token = tokens.find_token_object_by_string(
+    found_access_token = tokens.find_token_object_by_string(
         user_id=user_id,
         token_class=access_token_class,
         encrypted_token=enc_access_token
     )
 
-    found_refresh_token, _ = tokens.find_token_object_by_string(user_id=user_id,
+    found_refresh_token = tokens.find_token_object_by_string(user_id=user_id,
                                                                 token_class=refresh_token_class,
                                                                 encrypted_token=enc_refresh_token)
 
     user_text = f'for user #{user_id}' if user_id else ''
-    if found_access_token and is_just_expired_access_token:
-        _logger.info(
-            f'{method}: {user_text} is using a "just expired" token {utils.shorten_middle(enc_access_token, 30)} == ' +
-            f'{utils.shorten_middle(found_access_token.old_token, 30)} ')
-
     if not found_access_token:
         _logger.error(f'{method}: access token ({utils.shorten_middle(enc_access_token, 30)}) {user_text} not found ' +
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
@@ -266,11 +254,11 @@ def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> Tuple[ob
 
     # refresh token not in table?
     if not found_refresh_token:
-        _logger.error(f'{method}: refresh token ({utils.shorten_middle(enc_access_token, 30)}) {user_text} not found '+
+        _logger.error(f'{method}: refresh token ({utils.shorten_middle(enc_refresh_token, 30)}) {user_text} not found '+
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
-    return found_access_token, is_just_expired_access_token
+    return found_access_token
 
 
 def verify_token_is_fresh(jwt_header: Union[dict, None], jwt_data: dict) -> None:

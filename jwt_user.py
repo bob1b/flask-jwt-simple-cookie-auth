@@ -51,10 +51,9 @@ def logout_user(user_obj, logout_all_sessions=False):
         if not access_cookie_value:
             _logger.warning(f'{method}: no access_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_access_token, is_just_expired_access_token = tokens.find_token_object_by_string(
+            found_access_token = tokens.find_token_object_by_string(
                 user_id=user_obj.id,
                 token_class=access_token_class,
-                allow_just_expired_tokens=True, # if user logged out using a 'just expired' token, then revoke that token
                 encrypted_token=access_cookie_value,
             )
             if not found_access_token:
@@ -69,7 +68,7 @@ def logout_user(user_obj, logout_all_sessions=False):
             _logger.warning(
                 f'{method}: no refresh_cookie_value for user #{user_obj.id}, cannot invalidate access token')
         else:
-            found_refresh_token, _ = tokens.find_token_object_by_string(
+            found_refresh_token = tokens.find_token_object_by_string(
                 user_id=user_obj.id,
                 token_class=refresh_token_class,
                 encrypted_token=access_cookie_value,
@@ -121,13 +120,15 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
                   refresh_token_class.query.filter_by(user_id=user_obj.id).all()
 
     for token_obj in user_tokens:
+        ...
         # check if this token is not refreshable
-        if not tokens_utils.token_is_refreshable(token_obj) or expire_all_tokens:
-            if type(token_obj) == access_token_class:
-                removed_access_count = removed_access_count + 1
-            else: # refresh token
-                removed_refresh_count = removed_refresh_count + 1
-            db.session.delete(token_obj)
+        # TODO - fix logic for determining if a token should be removed
+        # if not tokens_utils.token_is_refreshable(token_obj) or expire_all_tokens:
+        #     if type(token_obj) == access_token_class:
+        #         removed_access_count = removed_access_count + 1
+        #     else: # refresh token
+        #         removed_refresh_count = removed_refresh_count + 1
+        #     db.session.delete(token_obj)
     if removed_access_count + removed_refresh_count > 0:
         db.session.commit()
         message = f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' + \
@@ -138,6 +139,8 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None,
                                        session: Optional[object]=None):
     """ create token and set JWT access cookie (includes CSRF) """
+    # TODO - fix this so it won't replace the expiring token but create a new token and return it. Expired tokens will
+    #        be removed elsewhere
     method = f"User.create_or_update_user_access_token({user_obj})"
 
     jwt_man = jwt_manager.get_jwt_manager()

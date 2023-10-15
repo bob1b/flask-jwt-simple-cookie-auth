@@ -4,14 +4,22 @@ from . import jwt_user
 from . import view_decorators
 
 # TODO #####################################
+
+# TODO - refresh window (percent of access expiration) at end of valid term when tokens will start refreshing
+# TODO - refresh the access tokens early and leave the access token in the table as an expired token for now
+#   TODO - when the token is refreshed, set the expiration to occur soonish
+# TODO - ensure that the refresh request has a valid refresh token
+
+
 # TODO - race condition problem
 #   * Two or more requests using the same access token (and refresh token) call an endpoint
-#   * The first request is processed first and gets a refreshed access token [cookie]. The old token is set as
-#     just-expired in the db
+#   * The first request is processed first and gets a refreshed access token [cookie] - is the old toke immediately expired??
 #   * The second request starts before the token is changed in the db, so this request is also going to get a
-#     new access token cookie, and the old token will again be set as just-expired
+#     new access token cookie, and the old token will again immediately expired?
 #   * Since currently tokens are replaced when they expire, the next request is using an invalid token,
 #     leading to the user getting logged out
+#
+#  TODO - consider: https://pypi.org/project/safelock/
 
 # TODO - Test case:
 #   *  Malicious user steals an access token and can act as a logged-in user until the access token needs to be
@@ -19,15 +27,10 @@ from . import view_decorators
 #   * When then malicious user's access token expires, it can't be refreshed, and the user is logged out. Optionally,
 #     we can invalidate all of that user's session's tokens OR all of that user's tokens
 
-#  TODO - Question: what's the point of having tokens expire if they can be refreshed after expiration?
-#   TODO - refresh the access tokens early and leave the access token in the table as a just-expired token
-#     TODO - ensure that the request has a valid refresh token
-#   TODO - remove just-expired access token records after they are older than refresh token expiration (they can't be
-#          refreshed) OR after the just-expired window ends
-#              This is the problematic part. How do we know if there are any pending requests that are using the old
-#              token?
+#   TODO - remove old expired access token records after after 1 month or whatever
 #   TODO - intermittently consolidate access tokens having the same refresh token (or session uuid)
-#     TODO - use the refresh token as a session uuid
+#   TODO - create a session ID at every log in users
+#   TODO - use the refresh token as a session uuid
 #     TODO - send the new token and set the consolidate tokens to expire soon
 
 #  TODO - add the device "Android phone" in the JWT when it's encoded. Then, token revocation should be easy to do

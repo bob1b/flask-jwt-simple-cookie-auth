@@ -136,9 +136,9 @@ class _Config(object):
         return delta
 
     @property
-    def access_token_expiration_window(self):
-        """ for just-expired tokens """
-        return current_app.config["JWT_ACCESS_TOKEN_EXPIRATION_WINDOW"]
+    def access_refresh_after_percent_expired(self) -> float:
+        """ access tokens will begin refreshing when they are this percent expired """
+        return current_app.config.get("JWT_ACCESS_TOKEN_REFRESH_AFTER_PERCENT_EXPIRED", 60)
 
     @property
     def algorithm(self) -> str:

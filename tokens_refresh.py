@@ -43,59 +43,37 @@ def refresh_expiring_jwts(user_class=None):
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, refresh_token_class = jwt_man.get_token_classes()
 
-    # begin session
-    db = jwt_man.get_db()
-    session = db.session
-    session.begin_nested()
-    found_access_token, is_just_expired_access_token = \
-        tokens.find_token_object_by_string(
+
+    session = jwt_man.get_db().session
+    found_access_token = tokens.find_token_object_by_string(
             enc_access_token, token_class=access_token_class, session=session, lock_if_found=True)
 
-    found_refresh_token, _ = tokens.find_token_object_by_string(enc_refresh_token, token_class=refresh_token_class)
+    found_refresh_token = tokens.find_token_object_by_string(enc_refresh_token, token_class=refresh_token_class)
 
     if not found_access_token:
         _logger.warning(f'{method}: no ACCESS TOKEN matching cookie. Cannot determine expiration nor refresh')
         jwt_user.set_no_user()
-        session.commit()
         return
 
     if not found_refresh_token:
         _logger.warning(f'{method}: no REFRESH TOKEN matching cookie. Cannot refresh')
         jwt_user.set_no_user()
-        session.commit()
+        return
+
+    # check if the access token has expired
+    if tokens_utils.access_token_has_expired(found_access_token):
+        _logger.info(f'{method}: access token has expired')
+        jwt_user.set_no_user()
         return
 
     # if the refresh token has expired, then we can't refresh the access token
-    if tokens_utils.refresh_token_has_expired(found_refresh_token):
-        _logger.info(f'{method}: refresh token has expired. Access token cannot be refreshed')
-        jwt_user.set_no_user()
-        session.commit()
-        return
+    refresh_has_expired = tokens_utils.refresh_token_has_expired(found_refresh_token)
+    if refresh_has_expired:
+        _logger.info(f'{method}: refresh token has expired. Access token cannot be refreshed (but access token is '+
+                     'valid for now')
 
-    # if the access token is a "just expired" token, then treat it as valid for the next short interval
-    if is_just_expired_access_token:
-        _logger.info(f"{method}: access token has 'just expired', so there's nothing to refresh")
-        session.commit()
-        return enc_access_token, enc_refresh_token
-
-    # if the access token hasn't expired yet, then we don't need to do anything
-    if not tokens_utils.access_token_has_expired(found_access_token):
-        _logger.info(f"{method}: access token hasn't expired yet, returning")
-        session.commit()
-        return enc_access_token, enc_refresh_token
-
-    # token has expired. Get more info so that we can refresh it
-    print(f'\ttoken has expired: {tokens_utils.displayable_from_encoded_token(enc_access_token)}, is_just_expired = ' +
-          f'{is_just_expired_access_token}')
-    expired_access_token = found_access_token
-
-    # check if token cannot be refreshed (it is older than the refresh token)
-    if not tokens_utils.token_is_refreshable(expired_access_token):
-        _logger.info(
-            f'{method}: access token cannot be refreshed because it is older than the refresh token expiration')
-        jwt_user.set_no_user()
-        session.commit()
-        return
+    # the access token hasn't expired yet. Check if it's time to refresh it
+    _logger.info(f"{method}: access token hasn't expired yet")
 
     dec_access_token = tokens_encode_decode.decode_token(enc_access_token) # TODO - do we need to validate the token?
     jwt_header = jwt.get_unverified_header(enc_access_token)
@@ -107,7 +85,6 @@ def refresh_expiring_jwts(user_class=None):
         _logger.warning(f'{method}: unable to load user from decoded access token: {json.dumps(dec_access_token)},'+
                         ' cannot refresh access token')
         jwt_user.set_no_user()
-        session.commit()
         return
 
     if found_access_token.user_id != user_obj.id:
@@ -115,7 +92,6 @@ def refresh_expiring_jwts(user_class=None):
             f'{method}: access token #{found_access_token.id} relates to user #{found_access_token.user_id} ' +
             f'instead of expected user #{user_obj.id}. Cannot refresh')
         jwt_user.set_no_user()
-        session.commit()
         return
 
     if found_refresh_token.user_id != user_obj.id:
@@ -123,24 +99,27 @@ def refresh_expiring_jwts(user_class=None):
             f'{method}: refresh token #{found_refresh_token.id} relates to user #{found_refresh_token.user_id}'+
             f' instead of expected user #{user_obj.id}. Cannot refresh')
         jwt_user.set_no_user()
-        session.commit()
         return
 
-    # tokens have passed validation and can be refreshed
-    _logger.info(f'{method}: user #{user_obj.id} {-1 * tokens_utils.expires_in_seconds(expired_access_token)} seconds '+
+    # tokens have passed validation and can be refreshed. check if it's time to refresh the token
+    if not tokens_utils.is_time_to_refresh_the_access_token(found_access_token):
+        return # success - no tokens returned because we didn't refresh anything
+
+    _logger.info(f'{method}: CAN REFRESH THE ACCESS TOKEN ANYTIME NOW')
+    _logger.info(f'{method}: user #{user_obj.id} {-1 * tokens_utils.expires_in_seconds(found_access_token)} seconds '+
                  f'since access token expiration. Refreshing access token ...')
 
     # refresh the access token
-    access_token = jwt_user.create_or_update_user_access_token(user_obj,
-                                                               update_existing=expired_access_token,
-                                                               session=session)
+    access_token = jwt_user.create_or_update_user_access_token(
+        user_obj,
+        update_existing=found_access_token,
+        session=session
+    )
     print(f"\trefresh token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
           f"{tokens_utils.displayable_from_encoded_token(access_token)}")
     print("\tsleeping")
-    time.sleep(10)
+    time.sleep(5)
     print('\tdone sleeping')
-    print('\nUNLOCK\n')
-    session.commit() # also unlocks the access_token row
     # end of session
 
     g.new_access_token = access_token
