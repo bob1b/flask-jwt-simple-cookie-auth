@@ -23,7 +23,7 @@ current_user: Any = LocalProxy(lambda: get_current_user())
 
 def login_user(user_obj: object):
     # create cookies and save in 'g' so they will be applied to the response
-    g.new_access_token = create_or_update_user_access_token(user_obj, fresh=True)
+    g.new_access_token = create_user_access_token(user_obj, fresh=True)
     g.new_refresh_token = create_user_refresh_token(user_obj)
 
     _logger.info(f"login_user(): g.new_access_token = {utils.shorten_middle(g.new_access_token, 30)}")
@@ -116,19 +116,19 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 
     removed_access_count = 0
     removed_refresh_count = 0
-    user_tokens = access_token_class.query.filter_by(user_id=user_obj.id).all() + \
-                  refresh_token_class.query.filter_by(user_id=user_obj.id).all()
+    user_tokens = access_token_class.query.filter(access_token_class.user_id == user_obj.id,
+                                                  access_token_class.expire_at.isnot(None)).all() + \
+                  refresh_token_class.query.filter(refresh_token_class.user_id == user_obj.id,
+                                                   refresh_token_class.expire_at.isnot(None)).all()
 
     for token_obj in user_tokens:
-        ...
-        # check if this token is not refreshable
-        # TODO - fix logic for determining if a token should be removed
-        # if not tokens_utils.token_is_refreshable(token_obj) or expire_all_tokens:
-        #     if type(token_obj) == access_token_class:
-        #         removed_access_count = removed_access_count + 1
-        #     else: # refresh token
-        #         removed_refresh_count = removed_refresh_count + 1
-        #     db.session.delete(token_obj)
+        # check if this token has expired
+        if token_obj.expire_at > datetime.utcnow():
+            if type(token_obj) == access_token_class:
+                removed_access_count = removed_access_count + 1
+            else: # refresh token
+                removed_refresh_count = removed_refresh_count + 1
+            db.session.delete(token_obj)
     if removed_access_count + removed_refresh_count > 0:
         db.session.commit()
         message = f'{method}: removed {removed_access_count} expired access tokens and {removed_refresh_count } ' + \
@@ -136,8 +136,7 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
         _logger.info(message)
 
 
-def create_or_update_user_access_token(user_obj: object, fresh: bool=False, update_existing: Optional[object]=None,
-                                       session: Optional[object]=None):
+def create_user_access_token(user_obj: object, fresh: bool=False, previous_token: Union[int, object]=None) -> str:
     """ create token and set JWT access cookie (includes CSRF) """
     # TODO - fix this so it won't replace the expiring token but create a new token and return it. Expired tokens will
     #        be removed elsewhere
@@ -145,37 +144,31 @@ def create_or_update_user_access_token(user_obj: object, fresh: bool=False, upda
 
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, _ = jwt_man.get_token_classes()
-
-    if not session:
-        db = jwt_man.get_db()
-        session = db.session
+    session = jwt_man.get_db().session
 
     user_agent = None
     if request:
         user_agent = request.headers.get("User-Agent")
 
+    # create the encoded access token string
     access_token = tokens_create.create_access_token(identity=user_obj.id, fresh=fresh)
+
+    # set flags so the user cookies will be updated at the end of the request
     g.unset_tokens = False
     g.new_access_token = access_token
 
-    if update_existing and type(update_existing) == access_token_class:
-        _logger.info(f"{method}: Replaced access_token #{update_existing.id} with new token value = " +
-                     utils.shorten_middle(access_token, 40))
+    _logger.info(f"{method}: Created new access_token = {utils.shorten_middle(access_token, 40)}")
 
-        # Save old token value and when it expired. We can use this for very recent requests that are still using the
-        # old token
-        update_existing.old_token = update_existing.token
-        update_existing.old_token_expired_at = datetime.utcnow()
-        _logger.info(f"{method}: old token: {utils.shorten_middle(update_existing.old_token, 30)}, expired at "+
-                     f"{update_existing.old_token_expired_at}")
-
-        # Update the access token value and user agent
-        update_existing.token = access_token
-        update_existing.user_agent = user_agent
-    else:
-        _logger.info(f"{method}: Created new access_token = {utils.shorten_middle(access_token, 40)}")
-        access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
-        session.add(access_token_obj)
+    # create a new access_token object in which to save the access_token (string) value. Also save the previous_token's
+    # ID if supplied
+    access_token_obj = access_token_class(token=access_token, user_id=user_obj.id, user_agent=user_agent)
+    session.add(access_token_obj)
+    if previous_token:
+        # if the previous token is passed in as an integer ID
+        if type(previous_token) == int:
+            access_token_obj.previous_token_id = previous_token
+        else: # if the previous token is passed in as an object
+            access_token_obj.previous_token_id = previous_token.id
     session.commit()
     return access_token
 

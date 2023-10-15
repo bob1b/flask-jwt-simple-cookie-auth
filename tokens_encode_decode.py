@@ -2,25 +2,14 @@ import jwt
 import json
 import uuid
 import logging
-import traceback
 
-from sqlalchemy import and_
-from hmac import compare_digest
-from jwt import ExpiredSignatureError
 from datetime import (datetime, timedelta, timezone)
-from flask import (request, g, current_app, make_response)
-from typing import (Any, Iterable, Type, Union, Optional, Tuple)
-
+from typing import (Any, Iterable, Union, Optional)
 
 from . import utils
 from . import types
-from . import tokens
-from . import cookies
-from . import tokens_refresh
-from . import jwt_user
 from . import jwt_manager
 from .config import config
-from . import jwt_exceptions
 
 _logger = logging.getLogger(__name__)
 
@@ -38,6 +27,7 @@ def encode_jwt(nbf: Optional[bool] = None,
                identity_claim_key: Optional[str] = None,
                audience: Union[str, Iterable[str]] = False,
                expires_delta: Optional[types.ExpiresDelta] = None) -> str:
+
     method = 'encode_jwt()'
     jwt_man = jwt_manager.get_jwt_manager()
     now = datetime.now(timezone.utc)

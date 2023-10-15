@@ -25,8 +25,8 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         Accepts dict of options, which includes "enc_access_token" and "enc_refresh_token" (from cookies). Performs
         validation on the tokens as they are decoded
 
-        If "auto_refresh" is enabled and the refresh token is valid, then an expired token will be replaced wth a new
-        token.
+        If "auto_refresh" is enabled and the supplied access token is expiring soon, then a new token may be created and
+        the new tokens will be passed back from this method
 
         If validation and decoding was successful, a tuple of the access and refresh dicts is returned. Otherwise, a
         tuple (None, None) is returned
@@ -52,11 +52,11 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
                 # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
                 opt['enc_access_token'] = new_access_token
                 opt['enc_refresh_token'] = new_refresh_token
-                print(f"validating new access token: {utils.shorten_middle(new_access_token, 30)}")
+                _logger.info(f"validating new access token: {utils.shorten_middle(new_access_token, 30)}")
 
                 # rerun token validation
                 dec_access_token, dec_refresh_token = token_validation(opt)
-                print(f"\ndone validating new access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
+                _logger.info(f"done validating new access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
                 return dec_access_token, dec_refresh_token
 
         return dec_access_token, dec_refresh_token
@@ -69,7 +69,7 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         if not opt.get('no_exception_on_expired', True):
             _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}')
             raise
-        print(f"{method}: returning REFRESHED dec_access_token: {tokens_utils.displayable_from_decoded_token(dec_access_token)} ")
+        _logger.info(f"{method}: returning REFRESHED dec_access_token: {tokens_utils.displayable_from_decoded_token(dec_access_token)} ")
         return dec_access_token, dec_refresh_token
 
     except jwt_exceptions.NoAuthorizationError as e:
@@ -96,9 +96,9 @@ def token_validation(opt) -> [dict, dict]:
     method = f'token_validation()'
     if not opt.get('enc_access_token') or not opt.get('enc_refresh_token'):
         if not opt.get('enc_access_token'):
-            print("**** enc_access_token not supplied!")
+            _logger.warning(f"{method}: enc_access_token not supplied")
         if not opt.get('enc_refresh_token'):
-            print("**** enc_refresh_token not supplied!")
+            _logger.warning(f"{method}: enc_refresh_token not supplied")
 
         return None, None
 

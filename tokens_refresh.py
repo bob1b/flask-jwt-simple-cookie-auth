@@ -35,7 +35,7 @@ def refresh_expiring_jwts(user_class=None):
     g.checked_expiring = True
 
     enc_access_token , enc_refresh_token, csrf_tokens = tokens_cookies.get_tokens_from_cookies()
-    print(f"\n{method}:  [{request.url}] {tokens_utils.displayable_from_encoded_token(enc_access_token)}")
+    _logger.info(f"{method}:  [{request.url}] {tokens_utils.displayable_from_encoded_token(enc_access_token)}")
     if not enc_access_token or not enc_refresh_token or not csrf_tokens[0] or not csrf_tokens[1]:
         _logger.info(f'{method}: no tokens, returning')
         return
@@ -110,12 +110,11 @@ def refresh_expiring_jwts(user_class=None):
                  f'since access token expiration. Refreshing access token ...')
 
     # refresh the access token
-    access_token = jwt_user.create_or_update_user_access_token(
-        user_obj,
-        update_existing=found_access_token,
-        session=session
-    )
-    print(f"\trefresh token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
+    # TODO - optionally refresh at a random time during the ready-to-refresh time (reducing change of race conditions)
+    # TODO - set old token (found_access_token) to expire in a little while
+    #
+    access_token = jwt_user.create_user_access_token(user_obj)
+    _logger.info(f"\trefreshed access token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
           f"{tokens_utils.displayable_from_encoded_token(access_token)}")
     print("\tsleeping")
     time.sleep(5)

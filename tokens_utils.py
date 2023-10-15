@@ -1,4 +1,5 @@
 import jwt
+import math
 import logging
 from flask import g
 from typing import (Any, Optional)
@@ -66,6 +67,10 @@ def token_dict_expires_in_seconds(dec_token):
 def token_dict_expiration(dec_token):
     return int(dec_token["exp"])
 
+def token_dict_issued_at(dec_token):
+    return int(dec_token["iat"])
+
+
 def expires_in_seconds(token_obj: Any,
                        no_exception: bool = True,
                        use_refresh_expiration_delta: bool = False) -> Optional[int]:
@@ -114,17 +119,10 @@ def access_token_has_expired(token_obj: object,
 
 def access_token_percent_expired(token_obj: object) -> float:
     token_dict = tokens_encode_decode.decode_token(token_obj.token, no_exception=True)
-
-    created_epoch = token_obj.create_date.timestamp()
-    exp_epoch = token_dict_expiration(token_dict)
-
-    print(f"created: {created_epoch}, exp_epoch = {exp_epoch}")
-    total_token_duration_seconds = (exp_epoch - created_epoch)
-    print(f'total duration seconds: {total_token_duration_seconds}')
-
-    expires_in = expires_in_seconds(token_obj)
-    percent = (float(expires_in) / float(total_token_duration_seconds)) * 100.0
-    print(f"token is {percent}% expired")
+    total_token_duration_seconds = token_dict_expiration(token_dict) - token_dict_issued_at(token_dict)
+    expires_in = token_dict_expires_in_seconds(token_dict)
+    percent = math.ceil((float(total_token_duration_seconds - expires_in) / float(total_token_duration_seconds)) * 100.0)
+    _logger.info(f"token is {percent}% expired")
     return percent
 
 
@@ -139,7 +137,7 @@ def refresh_token_has_expired(token_obj: Any) -> bool:
 def is_time_to_refresh_the_access_token(token_obj: object) -> bool:
     """ check if token is expired enough that it can be refreshed """
     if not token_obj:
-        print("\n\n !!!!!!!is_time_to_refresh_the_access_token(): no token!")
+        _logger.warning("is_time_to_refresh_the_access_token(): no token")
         return False
     return access_token_percent_expired(token_obj) >= config.access_refresh_after_percent_expired
 

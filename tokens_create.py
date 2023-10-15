@@ -12,7 +12,7 @@ def create_access_token(identity: Any,
                         additional_claims=None,
                         additional_headers=None,
                         fresh: types.Fresh = False,
-                        expires_delta: Optional[types.ExpiresDelta] = None):
+                        expires_delta: Optional[types.ExpiresDelta] = None) -> str:
     """
         :param identity:
             The identity of this token. It can be any data that is json serializable. You can use
