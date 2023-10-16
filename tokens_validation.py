@@ -236,15 +236,13 @@ def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> object:
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # access and refresh tokens not in tables?
-    found_access_token = tokens.find_token_object_by_string(
-        user_id=user_id,
-        token_class=access_token_class,
-        encrypted_token=enc_access_token
-    )
+    found_access_token = tokens.find_token_object_by_string(user_id=user_id,
+                                                            token_class=access_token_class,
+                                                            encrypted_token=enc_access_token)
 
     found_refresh_token = tokens.find_token_object_by_string(user_id=user_id,
-                                                                token_class=refresh_token_class,
-                                                                encrypted_token=enc_refresh_token)
+                                                             token_class=refresh_token_class,
+                                                             encrypted_token=enc_refresh_token)
 
     user_text = f'for user #{user_id}' if user_id else ''
     if not found_access_token:

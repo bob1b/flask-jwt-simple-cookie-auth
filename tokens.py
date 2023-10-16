@@ -156,13 +156,7 @@ def process_and_handle_tokens(fresh: bool = False,
     return dec_access_token
 
 
-def find_token_object_by_string(
-        encrypted_token: str,
-        token_class: Any,
-        user_id: Optional[int]=None,
-        session: Optional[object]=None, # TODO - might need to use this to lock the row correctly
-        lock_if_found: Optional[bool]=False,
-) -> Optional[object]:
+def find_token_object_by_string(encrypted_token: str, token_class: Any, user_id: Optional[int]=None) -> Optional[object]:
     """
         Attempts to find the encrypted token string in the token table associated with `token_class`
 
@@ -171,12 +165,7 @@ def find_token_object_by_string(
     method = f'find_token_object_by_string({token_class}, {utils.shorten_middle(encrypted_token, 20)}, ' + \
              f'user_id={user_id})'
 
-    if session:
-        token_query = session.query(token_class)
-    else:
-        token_query = token_class.query
-
-    token_query = token_query.filter_by(token=encrypted_token)
+    token_query = token_class.query.filter_by(token=encrypted_token)
     if user_id:
         token_query = token_query.filter_by(user_id=user_id)
 

@@ -5,20 +5,9 @@ from . import view_decorators
 
 # TODO #####################################
 
-# TODO - refresh window (percent of access expiration) at end of valid term when tokens will start refreshing
-# TODO - refresh the access tokens early and leave the access token in the table as an expired token for now
-#   TODO - when the token is refreshed, set the expiration to occur soonish
-# TODO - ensure that the refresh request has a valid refresh token
+# TODO - optionally refresh at a random time during the ready-to-refresh time (reducing change of race conditions)
+# TODO - set old token (found_access_token) to expire in a little while when it is replaced with a new token
 
-
-# TODO - race condition problem
-#   * Two or more requests using the same access token (and refresh token) call an endpoint
-#   * The first request is processed first and gets a refreshed access token [cookie] - is the old toke immediately expired??
-#   * The second request starts before the token is changed in the db, so this request is also going to get a
-#     new access token cookie, and the old token will again immediately expired?
-#   * Since currently tokens are replaced when they expire, the next request is using an invalid token,
-#     leading to the user getting logged out
-#
 #  TODO - consider: https://pypi.org/project/safelock/
 
 # TODO - Test case:
@@ -47,20 +36,3 @@ from . import view_decorators
 # TODO - unit tests
 # TODO - add the default callbacks functionality back in
 # TODO #####################################
-
-"""
-  Files:
-    * config.py - config handling for JWT, mainly @property methods
-    * default_callbacks.py - callbacks for things like user_identity_loader and user_lookup_loader
-    * jwt_exceptions.py - exception classes, some containing __init__ code
-    * jwt_manager.py - 
-    * py.typed - empty
-    * tokens.py - token methods that don't belong in another file like user.py
-    * typing.py - type hints setup
-    * jwt_user.py (mine) - user-specific methods: login, logout, remove_expired_tokens, etc
-    * utils.py - ...
-    * view_decorators.py - jwt_sca()
-
-    What exactly is a claim: an unverified statement of identity?
-        It's a potentially unvalidated part of the JWT token, e.g "sub" (user identity)
-"""

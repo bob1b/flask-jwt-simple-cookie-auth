@@ -15,7 +15,7 @@ from . import tokens_cookies
 from . import tokens_encode_decode
 
 _logger = logging.getLogger(__name__)
-Session = orm.sessionmaker()
+
 
 def refresh_expiring_jwts(user_class=None):
     """
@@ -43,11 +43,7 @@ def refresh_expiring_jwts(user_class=None):
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, refresh_token_class = jwt_man.get_token_classes()
 
-
-    session = jwt_man.get_db().session
-    found_access_token = tokens.find_token_object_by_string(
-            enc_access_token, token_class=access_token_class, session=session, lock_if_found=True)
-
+    found_access_token = tokens.find_token_object_by_string(enc_access_token, token_class=access_token_class)
     found_refresh_token = tokens.find_token_object_by_string(enc_refresh_token, token_class=refresh_token_class)
 
     if not found_access_token:
@@ -109,22 +105,17 @@ def refresh_expiring_jwts(user_class=None):
     _logger.info(f'{method}: user #{user_obj.id} {-1 * tokens_utils.expires_in_seconds(found_access_token)} seconds '+
                  f'since access token expiration. Refreshing access token ...')
 
-    # refresh the access token
-    # TODO - optionally refresh at a random time during the ready-to-refresh time (reducing change of race conditions)
-    # TODO - set old token (found_access_token) to expire in a little while
-    #
+    # create a new access token
     access_token = jwt_user.create_user_access_token(user_obj)
+    dec_access_token = tokens_encode_decode.decode_token(enc_access_token)
+
     _logger.info(f"\trefreshed access token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
           f"{tokens_utils.displayable_from_encoded_token(access_token)}")
-    print("\tsleeping")
-    time.sleep(5)
-    print('\tdone sleeping')
-    # end of session
 
     g.new_access_token = access_token
+    g.unset_tokens = False
 
     # update current_user
     jwt_header = jwt.get_unverified_header(access_token)
-    print("refresh_tokens() END: calling set_current_user()")
     jwt_user.set_current_user(jwt_header, dec_access_token)
     return access_token, enc_refresh_token
