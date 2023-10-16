@@ -140,7 +140,7 @@ def unset_cookies(cookie_type: str, response: Response or tuple, domain: Optiona
         'domain': domain or config.cookie_domain,
     }
 
-    _logger.info(f'{method}: unsetting access cookies')
+    _logger.info(f'{method}: unsetting {cookie_type} cookies')
     if type(response) == tuple:
         response[0].set_cookie(cookie_name, value="", httponly=True, **opt)
         if config.csrf_protect:

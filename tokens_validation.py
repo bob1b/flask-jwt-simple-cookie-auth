@@ -33,9 +33,6 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
     """
     method = f'tokens.decode_and_validate_tokens()'
 
-    # decoded token dicts
-    dec_access_token = None
-    dec_refresh_token = None
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
     try:
@@ -47,7 +44,7 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
             # if a value was returned, tokens were refreshed
             if ret_val:
                 new_access_token, new_refresh_token = ret_val
-                _logger.info(f"** {method}: refreshed access token {utils.shorten_middle(new_access_token, 30)}")
+                _logger.info(f"{method}: refreshed access token {utils.shorten_middle(new_access_token, 30)}")
 
                 # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
                 opt['enc_access_token'] = new_access_token
@@ -62,23 +59,22 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         return dec_access_token, dec_refresh_token
 
     except ExpiredSignatureError as e:
-
-
+        _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}, setting no-user')
+        jwt_user.set_no_user()
 
         # If set, show exception when token has expired
         if not opt.get('no_exception_on_expired', True):
-            _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}')
             raise
-        _logger.info(f"{method}: returning REFRESHED dec_access_token: {tokens_utils.displayable_from_decoded_token(dec_access_token)} ")
-        return dec_access_token, dec_refresh_token
+        return None, None
 
     except jwt_exceptions.NoAuthorizationError as e:
-        if (type(e) == jwt_exceptions.NoAuthorizationError or type(e) == ExpiredSignatureError) \
-           and not opt['no_exception_on_expired']:
-            _logger.error(f'{type(e)}: {e}')
-            raise
         _logger.error(f'{method}: got exception {e} - setting no-user')
         jwt_user.set_no_user()
+
+        # if we are showing exceptions on expired tokens
+        if not opt['no_exception_on_expired']:
+            _logger.error(f'{type(e)}: {e}')
+            raise
         return None, None
 
 
@@ -148,8 +144,8 @@ def token_validation(opt) -> [dict, dict]:
     # check if either token has expired
     access_expires = tokens_utils.token_dict_expires_in_seconds(dec_access_token)
     if access_expires <= 0:
-        raise ExpiredSignatureError(f'Access token {tokens_utils.displayable_from_decoded_token(dec_access_token)} has expired ' +
-                                    f'{-1 * access_expires} seconds ago')
+        raise ExpiredSignatureError(f'Access token {tokens_utils.displayable_from_decoded_token(dec_access_token)} ' +
+                                    f'has expired {-1 * access_expires} seconds ago')
     refresh_expires = tokens_utils.token_dict_expires_in_seconds(dec_refresh_token)
     if refresh_expires <= 0:
         raise ExpiredSignatureError(f'Refresh token has expired {-1 * refresh_expires} seconds ago')
@@ -236,27 +232,27 @@ def verify_token_not_block_listed(opt: dict, user_id: Optional[int]) -> object:
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # access and refresh tokens not in tables?
-    found_access_token = tokens.find_token_object_by_string(user_id=user_id,
-                                                            token_class=access_token_class,
-                                                            encrypted_token=enc_access_token)
+    found_access_token_obj = tokens.find_token_object_by_string(user_id=user_id,
+                                                               token_class=access_token_class,
+                                                               encrypted_token=enc_access_token)
 
-    found_refresh_token = tokens.find_token_object_by_string(user_id=user_id,
+    found_refresh_token_obj = tokens.find_token_object_by_string(user_id=user_id,
                                                              token_class=refresh_token_class,
                                                              encrypted_token=enc_refresh_token)
 
     user_text = f'for user #{user_id}' if user_id else ''
-    if not found_access_token:
+    if not found_access_token_obj:
         _logger.error(f'{method}: access token ({utils.shorten_middle(enc_access_token, 30)}) {user_text} not found ' +
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
     # refresh token not in table?
-    if not found_refresh_token:
+    if not found_refresh_token_obj:
         _logger.error(f'{method}: refresh token ({utils.shorten_middle(enc_refresh_token, 30)}) {user_text} not found '+
                       f'in table (i.e. blocklisted): {opt.get("jwt_data", {})}')
         raise jwt_exceptions.RevokedTokenError(opt["jwt_header"], opt.get("jwt_data", {}))
 
-    return found_access_token
+    return found_access_token_obj
 
 
 def verify_token_is_fresh(jwt_header: Union[dict, None], jwt_data: dict) -> None:

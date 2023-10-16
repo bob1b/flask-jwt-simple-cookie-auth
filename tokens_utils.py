@@ -117,12 +117,11 @@ def access_token_has_expired(token_obj: object,
         return True
 
 
-def access_token_percent_expired(token_obj: object) -> float:
+def access_token_obj_percent_expired(token_obj: object) -> float:
     token_dict = tokens_encode_decode.decode_token(token_obj.token, no_exception=True)
     total_token_duration_seconds = token_dict_expiration(token_dict) - token_dict_issued_at(token_dict)
     expires_in = token_dict_expires_in_seconds(token_dict)
     percent = math.ceil((float(total_token_duration_seconds - expires_in) / float(total_token_duration_seconds)) * 100.0)
-    _logger.info(f"token is {percent}% expired")
     return percent
 
 
@@ -139,10 +138,10 @@ def is_time_to_refresh_the_access_token(token_obj: object) -> bool:
     if not token_obj:
         _logger.warning("is_time_to_refresh_the_access_token(): no token")
         return False
-    return access_token_percent_expired(token_obj) >= config.access_refresh_after_percent_expired
+    return access_token_obj_percent_expired(token_obj) >= config.access_refresh_after_percent_expired
 
 
-def displayable_from_decoded_token(decoded_token: dict) -> str:
+def displayable_from_decoded_token(decoded_token: dict, token_object: Optional[object]=None) -> str:
     """ return a displayable decoded token format from a decoded token dict """
     """ example decoded dict: {'fresh': False, 'iat': 1696817640, 'jti': 'f2456a59-3bd3-4ae2-8f82-052f24ac5c20',
                                    'type': 'access', 'sub': 1, 'nbf': 1696817640,
@@ -153,10 +152,14 @@ def displayable_from_decoded_token(decoded_token: dict) -> str:
     exp = f'{token_dict_expires_in_seconds(decoded_token)} sec'
     jti = decoded_token['jti']
     token_type = str(decoded_token['type']).upper()
-    return f'<{token_type}: {exp} / {utils.shorten_middle(jti, 15)}>'
+
+    token_percent = ''
+    if token_object:
+        token_percent = f'/({access_token_obj_percent_expired(token_object)}%)'
+    return f'<{token_type}: {exp}{token_percent} "{utils.shorten_middle(jti, 15)}">'
 
 
-def displayable_from_encoded_token(encoded_token: str) -> str:
+def displayable_from_encoded_token(encoded_token: str, token_object: Optional[object]=None) -> str:
     """ return a displayable decoded token format from an encoded token """
     token_dict = tokens_encode_decode.decode_token(encoded_token, no_exception=True)
-    return displayable_from_decoded_token(token_dict)
+    return displayable_from_decoded_token(token_dict, token_object=token_object)

@@ -68,9 +68,6 @@ def refresh_expiring_jwts(user_class=None):
         _logger.info(f'{method}: refresh token has expired. Access token cannot be refreshed (but access token is '+
                      'valid for now')
 
-    # the access token hasn't expired yet. Check if it's time to refresh it
-    _logger.info(f"{method}: access token hasn't expired yet")
-
     dec_access_token = tokens_encode_decode.decode_token(enc_access_token) # TODO - do we need to validate the token?
     jwt_header = jwt.get_unverified_header(enc_access_token)
 
@@ -109,7 +106,7 @@ def refresh_expiring_jwts(user_class=None):
     access_token = jwt_user.create_user_access_token(user_obj)
     dec_access_token = tokens_encode_decode.decode_token(enc_access_token)
 
-    _logger.info(f"\trefreshed access token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
+    _logger.info(f"{method}: refreshed access token {tokens_utils.displayable_from_encoded_token(enc_access_token)} -> " +
           f"{tokens_utils.displayable_from_encoded_token(access_token)}")
 
     g.new_access_token = access_token
