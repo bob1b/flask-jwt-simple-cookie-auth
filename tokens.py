@@ -54,8 +54,8 @@ def process_and_handle_tokens(fresh: bool = False,
             token will be checked.
 
         :return:
-            If a valid JWT (or an expired but refreshable JWT) was provided in the request cookies:
-               Returns a dict containing the decoded token data
+            If a valid JWT was provided in the request cookies:
+               Returns a dict containing the decoded access token data
             If no JWT was supplied in the cookies, or if the JWT is invalid or expired:
                Returns ``None``
             If ``optional=False``, raise an exception if an invalid JWT was supplied
@@ -119,9 +119,9 @@ def process_and_handle_tokens(fresh: bool = False,
             "validate_csrf_for_this_request": config.csrf_protect and request.method in config.csrf_request_methods
         }
 
-        # decode_and_validate_tokens() - if the user is using an expired access token, this method will attempt to
-        #                                refresh it using refresh_expiring_jwts(). If the token expired and cannot be
-        #                                refreshed, then returns None
+        # decode_and_validate_tokens() - if the user is using an access token that will expire soon, this method will
+        #                                attempt to refresh it using refresh_expiring_jwts(). If the token cannot be
+        #                                refreshed, then the method will return None
         _logger.info(f'{method}: before decode_and_validate_tokens, {tokens_utils.displayable_from_encoded_token(opt["enc_access_token"])}')
         dec_access_token, dec_refresh_token = tokens_validation.decode_and_validate_tokens(opt)
         _logger.info(f'{method}: after decode_and_validate_tokens, {tokens_utils.displayable_from_decoded_token(dec_access_token)}')

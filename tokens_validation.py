@@ -36,30 +36,28 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
     # csrf_tokens = opt['csrf_tokens'] # TODO - do we need to do validate csrf_tokens in here?
 
     try:
-        dec_access_token, dec_refresh_token = token_validation(opt)
-
+        # refresh any old tokens if feature is enabled
         if opt.get('auto_refresh'):
             ret_val = tokens_refresh.refresh_expiring_jwts()
 
             # if a value was returned, tokens were refreshed
             if ret_val:
                 new_access_token, new_refresh_token = ret_val
-                _logger.info(f"{method}: refreshed access token {utils.shorten_middle(new_access_token, 30)}")
+                _logger.info(f"{method}: REFRESHED ACCESS TOKEN new={utils.shorten_middle(new_access_token, 30)}")
 
                 # TODO - if the token is still expired or otherwise invalid, to what value will .jwt_data be set?
                 opt['enc_access_token'] = new_access_token
                 opt['enc_refresh_token'] = new_refresh_token
-                _logger.info(f"validating new access token: {utils.shorten_middle(new_access_token, 30)}")
 
-                # rerun token validation
-                dec_access_token, dec_refresh_token = token_validation(opt)
-                _logger.info(f"done validating new access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
-                return dec_access_token, dec_refresh_token
+        _logger.info(f"{method}: validating access token: {utils.shorten_middle(opt['enc_access_token'], 30)}")
+        dec_access_token, dec_refresh_token = token_validation(opt)
+        _logger.info(
+            f"{method}: done validating access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
 
         return dec_access_token, dec_refresh_token
 
     except ExpiredSignatureError as e:
-        _logger.error(f'{method}: no_exception_on_expired=False, exception is: {type(e)}: {e}, setting no-user')
+        _logger.error(f'{method}: no_exception_on_expired={opt.get("no_exception_on_expired")}: {e}, setting no-user')
         jwt_user.set_no_user()
 
         # If set, show exception when token has expired

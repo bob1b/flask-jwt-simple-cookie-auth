@@ -1,11 +1,8 @@
 import jwt
 import json
-import time
 import logging
 from flask import g, request
-from sqlalchemy import orm
 
-from . import utils
 from . import jwt_user
 from . import jwt_manager
 
@@ -17,7 +14,7 @@ from . import tokens_encode_decode
 _logger = logging.getLogger(__name__)
 
 
-def refresh_expiring_jwts(user_class=None):
+def refresh_expiring_jwts():
     """
         Refresh access token for this request/session if it has expired
 
@@ -29,10 +26,10 @@ def refresh_expiring_jwts(user_class=None):
     """
     method = f'refresh_expiring_jwts()'
 
-    if hasattr(g, 'checked_expiring') and g.checked_expiring == True: # already checked for expiring JWTs
+    if hasattr(g, 'checking_expiring') and g.checking_expiring == True: # already checked for expiring JWTs
         _logger.info(f'{method}: already checking_expiring tokens, returning')
         return
-    g.checked_expiring = True
+    g.checking_expiring = True # this is set to None at the end of the request
 
     enc_access_token , enc_refresh_token, csrf_tokens = tokens_cookies.get_tokens_from_cookies()
     _logger.info(f"{method}:  [{request.url}] {tokens_utils.displayable_from_encoded_token(enc_access_token)}")
@@ -99,8 +96,8 @@ def refresh_expiring_jwts(user_class=None):
         return # success - no tokens returned because we didn't refresh anything
 
     _logger.info(f'{method}: CAN REFRESH THE ACCESS TOKEN ANYTIME NOW')
-    _logger.info(f'{method}: user #{user_obj.id} {-1 * tokens_utils.expires_in_seconds(found_access_token)} seconds '+
-                 f'since access token expiration. Refreshing access token ...')
+    _logger.info(f'{method}: user #{user_obj.id} {tokens_utils.expires_in_seconds(found_access_token)} seconds '+
+                 f'until access token expiration. Refreshing access token ...')
 
     # create a new access token
     access_token = jwt_user.create_user_access_token(user_obj)

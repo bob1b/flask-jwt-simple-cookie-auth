@@ -138,7 +138,7 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 
 def create_user_access_token(user_obj: object, fresh: bool=False, previous_token: Union[int, object]=None) -> str:
     """ create token and set JWT access cookie (includes CSRF) """
-    method = f"User.create_or_update_user_access_token({user_obj})"
+    method = f"User.create_user_access_token(user#{user_obj.id})"
 
     jwt_man = jwt_manager.get_jwt_manager()
     access_token_class, _ = jwt_man.get_token_classes()
