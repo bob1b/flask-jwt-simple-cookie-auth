@@ -49,11 +49,7 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
                 opt['enc_access_token'] = new_access_token
                 opt['enc_refresh_token'] = new_refresh_token
 
-        _logger.info(f"{method}: validating access token: {utils.shorten_middle(opt['enc_access_token'], 30)}")
         dec_access_token, dec_refresh_token = token_validation(opt)
-        _logger.info(
-            f"{method}: done validating access token, {tokens_utils.displayable_from_decoded_token(dec_access_token)}")
-
         return dec_access_token, dec_refresh_token
 
     except ExpiredSignatureError as e:

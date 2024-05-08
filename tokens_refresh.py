@@ -32,7 +32,7 @@ def refresh_expiring_jwts():
     g.checking_expiring = True # this is set to None at the end of the request
 
     enc_access_token , enc_refresh_token, csrf_tokens = tokens_cookies.get_tokens_from_cookies()
-    _logger.info(f"{method}:  [{request.url}] {tokens_utils.displayable_from_encoded_token(enc_access_token)}")
+    _logger.debug(f"{method}:  [{request.url}] {tokens_utils.displayable_from_encoded_token(enc_access_token)}")
     if not enc_access_token or not enc_refresh_token or not csrf_tokens[0] or not csrf_tokens[1]:
         _logger.info(f'{method}: no tokens, returning')
         return
