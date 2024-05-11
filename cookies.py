@@ -27,6 +27,16 @@ def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: st
                         :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
                         JWT_COOKIE_DOMAIN option will be ignored.
     """
+    def _set(response_object: Response):
+        response_object.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
+        if config.csrf_protect:
+            response_object.set_cookie(
+                csrf_cookie_name,
+                value=tokens_utils.get_csrf_token_from_encoded_token(encoded_token),
+                httponly=True,
+                **opt
+            )
+
     if cookie_type == 'refresh':
         cookie_name = config.refresh_cookie_name
         csrf_cookie_name = config.refresh_csrf_cookie_name
@@ -42,21 +52,11 @@ def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: st
         'max_age': max_age or config.cookie_max_age
     }
 
-    if type(response) == tuple:
-        response[0].set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
-        if config.csrf_protect:
-            response[0].set_cookie(
-                csrf_cookie_name,
-                value=tokens_utils.get_csrf_token_from_encoded_token(encoded_token),
-                httponly=True,
-                **opt
-            )
+    if isinstance(response, tuple) and isinstance(response[0], Response):
+        _set(response[0])
+    elif isinstance(response, Response):
+        _set(response)
+
+    # can't set cookie on non-response
     else:
-        response.set_cookie(cookie_name, value=encoded_token, httponly=True, **opt)
-        if config.csrf_protect:
-            response.set_cookie(
-                csrf_cookie_name,
-                value=tokens_utils.get_csrf_token_from_encoded_token(encoded_token),
-                httponly=True,
-                **opt
-            )
+        pass
