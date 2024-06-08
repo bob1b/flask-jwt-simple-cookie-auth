@@ -163,7 +163,7 @@ def create_user_access_token(user_obj: object, fresh: bool=False, previous_token
     session.add(access_token_obj)
     if previous_token:
         # if the previous token is passed in as an integer ID
-        if type(previous_token) == int:
+        if isinstance(previous_token, int):
             access_token_obj.previous_token_id = previous_token
         else: # if the previous token is passed in as an object
             access_token_obj.previous_token_id = previous_token.id
