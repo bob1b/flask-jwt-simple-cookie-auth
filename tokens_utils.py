@@ -86,7 +86,7 @@ def expires_in_seconds(token_obj: Any,
 
     try:
         dec_access_token = jwt.decode(token_obj.token,
-                                      secret=None, # TODO - jwt_man.encode_key_callback(identity),
+                                      # secret=None, # TODO - jwt_man.encode_key_callback(identity),
                                       algorithms=config.decode_algorithms, options={"verify_signature": False})
     except Exception as e: # TODO - use correct exception name here and in token_has_expired()
         err = f'{method}: exception in jwt.decode(): {e}'
