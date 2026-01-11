@@ -75,14 +75,14 @@ def get_token_from_cookie(which, no_exception=True) -> Union[str, Tuple[Union[st
         raise jwt_exceptions.WrongTokenError(err)
 
 
-def get_access_cookie_value(req: Request = None) -> dict or None:
+def get_access_cookie_value(req: Request = None) -> Optional[dict]:
     """ returns the value (encoded token) of the access cookie """
     if not req:
         req = request
     return req.cookies.get(config.access_cookie_name)
 
 
-def get_refresh_cookie_value(req: Request = None) -> dict or None:
+def get_refresh_cookie_value(req: Request = None) -> Optional[dict]:
     """ returns the value (encoded token) of the refresh cookie """
     if not req:
         req = request
@@ -113,16 +113,16 @@ def unset_jwt_cookies(response: Response, domain: Optional[str] = None) -> None:
     unset_cookies('refresh', response, domain)
 
 
-def unset_cookies(cookie_type: str, response: Response or tuple, domain: Optional[str] = None) -> None:
+def unset_cookies(cookie_type: str, response: Response, domain: Optional[str] = None) -> None:
     """
         Modify a Flask Response to delete the cookie containing an access or refresh JWT. Also deletes the corresponding
         CSRF cookie if applicable
 
         * cookie_type - 'access' or 'refresh'
         * param response - A Flask Response object
-        * param domain  - The domain of the cookie. If this is None, it will use the ``JWT_COOKIE_DOMAIN`` option (see
-                          :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
-                          JWT_COOKIE_DOMAIN option will be ignored.
+        * param domain - The domain of the cookie. If this is None, it will use the ``JWT_COOKIE_DOMAIN`` option (see
+                         :ref:`Configuration Options`). Otherwise, it will use this as the cookies ``domain`` and the
+                         JWT_COOKIE_DOMAIN option will be ignored.
     """
     method = 'unset_cookies()'
     if cookie_type == 'refresh':
@@ -141,12 +141,10 @@ def unset_cookies(cookie_type: str, response: Response or tuple, domain: Optiona
     }
 
     _logger.info(f'{method}: unsetting {cookie_type} cookies')
-    if type(response) == tuple:
-        response[0].set_cookie(cookie_name, value="", httponly=True, **opt)
-        if config.csrf_protect:
-            response[0].set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
 
-    else:
-        response.set_cookie(cookie_name, value="", httponly=True, **opt)
-        if config.csrf_protect:
-            response.set_cookie(csrf_cookie_name, value="", httponly=True, **opt)
+    if not isinstance(response, Response):
+        raise TypeError(f'{method}: expected response to be a Flask Response object, got {type(response)}')
+
+    response.set_cookie(cookie_name, value="", httponly=True, **opt)
+    if config.csrf_protect:
+        response.set_cookie(csrf_cookie_name, value="", httponly=True, **opt)

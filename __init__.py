@@ -1,4 +1,4 @@
-__version__ = ".1"
+__version__ = ".2"
 
 from . import jwt_user
 from . import view_decorators
@@ -10,7 +10,7 @@ from . import view_decorators
 
 #  TODO - consider: https://pypi.org/project/safelock/
 
-# TODO - Test case:
+# TODO - Test cases:
 #   *  Malicious user steals an access token and can act as a logged-in user until the access token needs to be
 #      refreshed.
 #   * When then malicious user's access token expires, it can't be refreshed, and the user is logged out. Optionally,

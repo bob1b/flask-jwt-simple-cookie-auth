@@ -100,7 +100,7 @@ def expires_in_seconds(token_obj: Any,
     # Use refresh token expiration for an access token. Used for determining if the access token is still refreshable
     access_token_class, _ = jwt_man.get_token_classes()
 
-    if use_refresh_expiration_delta and type(token_obj) == access_token_class:
+    if use_refresh_expiration_delta and isinstance(token_obj, access_token_class):
         # Adjust the expiration time from access delta to refresh delta
         expires_in = expires_in - config.access_expires.total_seconds() + config.refresh_expires.total_seconds()
 

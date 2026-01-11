@@ -108,7 +108,7 @@ class _Config(object):
     @property
     def access_expires(self) -> ExpiresDelta:
         delta = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
-        if type(delta) is int:
+        if isinstance(delta, int):
             delta = timedelta(seconds=delta)
         if delta is not False:
             try:
@@ -123,7 +123,7 @@ class _Config(object):
     @property
     def refresh_expires(self) -> ExpiresDelta:
         delta = current_app.config["JWT_REFRESH_TOKEN_EXPIRES"]
-        if type(delta) is int:
+        if isinstance(delta, int):
             delta = timedelta(seconds=delta)
         if delta is not False:
             # Basically runtime typechecking. Probably a better way to do this with proper type checking

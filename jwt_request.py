@@ -9,7 +9,12 @@ _logger = logging.getLogger(__name__)
 def after_request(response):
     """ If tokens were refreshed during this request, then set the new access token response cookie """
     method = 'after_request()'
-    if type(response) == str:
+
+    # if we have a tuple like `(<response_value: dict>, <status_code: int>)`
+    if isinstance(response, tuple) and len(response) == 2:
+        response = make_response(response[0], response[1])
+
+    elif isinstance(response, (str, dict)):
         response = make_response(response)
 
     if hasattr(g, "new_access_token"):

@@ -72,7 +72,7 @@ def decode_and_validate_tokens(opt: dict) -> Tuple[Union[dict, None], Union[dict
         return None, None
 
 
-def token_validation(opt) -> [dict, dict]:
+def token_validation(opt) -> tuple:
     """
         Validate a token string using JWT package decode():
           * Ensure there is an identity_claim and CSRF value in the decoded data

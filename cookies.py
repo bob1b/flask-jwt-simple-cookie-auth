@@ -7,7 +7,7 @@ from .config import config
 _logger = logging.getLogger(__name__)
 
 
-def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: str, max_age=None, domain=None) -> None:
+def set_cookies(cookie_type: str, response: Response, encoded_token: str, max_age=None, domain=None):
     """
         Modify a Flask Response to set a cookie containing the access/refresh JWT. Also sets the corresponding CSRF
         cookies
@@ -37,6 +37,8 @@ def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: st
                 **opt
             )
 
+    method = 'set_cookies()'
+
     if cookie_type == 'refresh':
         cookie_name = config.refresh_cookie_name
         csrf_cookie_name = config.refresh_csrf_cookie_name
@@ -52,11 +54,8 @@ def set_cookies(cookie_type: str, response: Response or tuple, encoded_token: st
         'max_age': max_age or config.cookie_max_age
     }
 
-    if isinstance(response, tuple) and isinstance(response[0], Response):
-        _set(response[0])
-    elif isinstance(response, Response):
-        _set(response)
+    if not isinstance(response, Response):
+        raise TypeError(f'{method}: expected response to be a Flask Response object, got {type(resp)}')
 
-    # can't set cookie on non-response
-    else:
-        pass
+    _set(response)
+

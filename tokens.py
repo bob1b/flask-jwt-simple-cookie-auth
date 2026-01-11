@@ -127,11 +127,11 @@ def process_and_handle_tokens(fresh: bool = False,
     # all exceptions relating to bad tokens should be caught here so that set_no_user() can be called
     except (jwt_exceptions.NoAuthorizationError, ExpiredSignatureError, jwt_exceptions.RevokedTokenError) as e:
 
-        if type(e) == jwt_exceptions.NoAuthorizationError and not optional:
+        if not optional and isinstance(e, jwt_exceptions.NoAuthorizationError):
             _logger.error(f'{method}: {type(e)}: {e}')
             raise
 
-        if type(e) == ExpiredSignatureError and not no_exception_on_expired:
+        if not no_exception_on_expired and isinstance(e, ExpiredSignatureError):
             _logger.error(f'{method}: {type(e)}: {e}')
             raise
 
