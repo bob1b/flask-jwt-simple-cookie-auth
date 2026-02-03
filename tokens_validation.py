@@ -1,8 +1,8 @@
 import logging
+import datetime
 from flask import current_app
 from hmac import compare_digest
 from jwt import ExpiredSignatureError
-from datetime import (datetime, timezone)
 from typing import (Union, Optional, Tuple)
 
 from . import utils
@@ -257,8 +257,8 @@ def verify_token_is_fresh(jwt_header: Union[dict, None], jwt_data: dict) -> None
             _logger.error(err)
             raise jwt_exceptions.FreshTokenRequired(err, jwt_header, jwt_data)
     else:
-        now = datetime.timestamp(datetime.now(timezone.utc))
-        if fresh < now:
+        now = datetime.datetime.now(datetime.UTC)
+        if fresh < datetime.datetime.timestamp(now):
             err = "Fresh token required"
             _logger.error(err)
             raise jwt_exceptions.FreshTokenRequired(err, jwt_header, jwt_data)

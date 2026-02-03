@@ -3,7 +3,7 @@ import json
 import uuid
 import logging
 
-from datetime import (datetime, timedelta, timezone)
+import datetime
 from typing import (Any, Iterable, Union, Optional)
 
 from . import utils
@@ -26,11 +26,11 @@ def encode_jwt(nbf: Optional[bool] = None,
                header_overrides: Optional[dict] = None,
                identity_claim_key: Optional[str] = None,
                audience: Union[str, Iterable[str]] = False,
-               expires_delta: Optional[types.ExpiresDelta] = None) -> str:
+               expires_delta: Optional[types.ExpiresDelta] = None) -> Optional[str]:
 
     method = 'encode_jwt()'
     jwt_man = jwt_manager.get_jwt_manager()
-    now = datetime.now(timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
 
     if nbf is None:
         nbf = config.encode_nbf
@@ -50,8 +50,8 @@ def encode_jwt(nbf: Optional[bool] = None,
     if identity_claim_key is None:
         identity_claim_key = config.identity_claim_key
 
-    if isinstance(fresh, timedelta):
-        fresh = datetime.timestamp(now + fresh)
+    if isinstance(fresh, datetime.timedelta):
+        fresh = datetime.datetime.timestamp(now + fresh)
 
     # TODO - this will need to be rewritten
     if not identity:
@@ -98,6 +98,7 @@ def encode_jwt(nbf: Optional[bool] = None,
     except Exception as e:
         err = f'{method}: exception in jwt.encode({json.dumps(token_data)}): {e}'
         _logger.error(err)
+        return None
 
 
 def decode_token(encoded_token: str, no_exception=True) -> dict:
@@ -107,7 +108,7 @@ def decode_token(encoded_token: str, no_exception=True) -> dict:
                                 issuer=config.decode_issuer,
                                 audience=config.decode_audience,
                                 algorithms=config.decode_algorithms,
-                                options={"verify_signature": False})
+                                options={"verify_signature": True})
         # _logger.info(f"decode_token(): {utils.shorten_middle(encoded_token, 30)} -> {json.dumps(token_dict, indent=2)}")
         return token_dict
 
@@ -116,3 +117,4 @@ def decode_token(encoded_token: str, no_exception=True) -> dict:
         _logger.error(err)
         if not no_exception:
             raise
+        return {}

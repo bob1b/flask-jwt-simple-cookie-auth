@@ -1,20 +1,20 @@
 import logging
+import datetime
 from flask import current_app
 from jwt.algorithms import requires_cryptography
-from datetime import (datetime, timedelta, timezone)
 from typing import (Iterable, List, Optional, Union)
 from .types import ExpiresDelta
 
 _logger = logging.getLogger(__name__)
 
 
-class _Config(object):
+class _Config:
     """
         Helper object for accessing and verifying options in this extension. This is meant for internal use of the
         application; modifying config options should be done with flasks ```app.config```.
 
-        Default values for the configuration options are set in the jwt_manager object. All of these values are read
-        only. This is simply a loose wrapper with some helper functionality for flasks `app.config`.
+        Default values for the configuration options are set in the jwt_manager object. All of these values are read-only.
+        This is simply a loose wrapper with some helper functionality for flasks `app.config`.
     """
 
     @property
@@ -109,11 +109,11 @@ class _Config(object):
     def access_expires(self) -> ExpiresDelta:
         delta = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
         if isinstance(delta, int):
-            delta = timedelta(seconds=delta)
+            delta = datetime.timedelta(seconds=delta)
         if delta is not False:
             try:
                 # Basically runtime typechecking. Probably a better way to do this with proper type checking
-                delta + datetime.now(timezone.utc)
+                delta + datetime.datetime.now(datetime.UTC)
             except TypeError as e:
                 err = "must be able to add JWT_ACCESS_TOKEN_EXPIRES to datetime.datetime"
                 _logger.error(err)
@@ -124,11 +124,11 @@ class _Config(object):
     def refresh_expires(self) -> ExpiresDelta:
         delta = current_app.config["JWT_REFRESH_TOKEN_EXPIRES"]
         if isinstance(delta, int):
-            delta = timedelta(seconds=delta)
+            delta = datetime.timedelta(seconds=delta)
         if delta is not False:
             # Basically runtime typechecking. Probably a better way to do this with proper type checking
             try:
-                delta + datetime.now(timezone.utc)
+                delta + datetime.datetime.now(datetime.UTC)
             except TypeError as e:
                 err = "must be able to add JWT_REFRESH_TOKEN_EXPIRES to datetime.datetime"
                 _logger.error(err)
@@ -184,7 +184,7 @@ class _Config(object):
 
     @property
     def cookie_max_age(self) -> Optional[int]:
-        # Returns the appropriate value for max_age for flask set_cookies. If session cookie is true, return None,
+        # Returns the appropriate value for max_age for flask set_cookies. If the session cookie is true, return None,
         # otherwise return the number of seconds in 1 year
         return None if self.session_cookie else 31540000
 

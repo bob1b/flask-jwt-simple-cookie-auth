@@ -1,9 +1,7 @@
-__version__ = ".2"
+__version__ = ".3"
 
 from . import jwt_user
 from . import view_decorators
-
-# TODO #####################################
 
 # TODO - optionally refresh at a random time during the ready-to-refresh time (reducing change of race conditions)
 # TODO - set old token (found_access_token) to expire in a little while when it is replaced with a new token
@@ -35,4 +33,3 @@ from . import view_decorators
 # TODO _ figure out why flask.g (and/or the ctx) isn't getting cleared/popped after the request ends
 # TODO - unit tests
 # TODO - add the default callbacks functionality back in
-# TODO #####################################

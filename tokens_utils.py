@@ -1,10 +1,10 @@
 import jwt
 import math
 import logging
+import datetime
 from flask import g
 from typing import (Any, Optional)
 from jwt import ExpiredSignatureError
-from datetime import (datetime, timezone)
 
 from . import utils
 from . import jwt_manager
@@ -62,7 +62,8 @@ def get_csrf_token_from_encoded_token(encoded_token: str) -> str: # TODO
 
 
 def token_dict_expires_in_seconds(dec_token):
-    return int(token_dict_expiration(dec_token) - datetime.timestamp(datetime.now(timezone.utc)))
+    now = datetime.datetime.now(datetime.UTC)
+    return int(token_dict_expiration(dec_token) - datetime.datetime.timestamp(now))
 
 def token_dict_expiration(dec_token):
     return int(dec_token["exp"])

@@ -24,18 +24,19 @@ def get_jwt_manager() -> "JWTManager":
 class JWTManager(object):
     """ An object used to hold JWT settings and callback functions for the Flask-JWT-Extended extension.
 
-        Instances of :class:`JWTManager` are *not* bound to specific apps, so you can create one in the main body of
-        your code and then bind it to your app in a factory function. """
+        Instances of `JWTManager` are *not* bound to specific apps, so you can create one in the main body of your code
+        and then bind it to your app in a factory function.
+    """
 
     def __init__(self, app: Optional[Flask] = None, add_context_processor: bool = False) -> None:
-        """ Create the JWTManager instance. You can either pass a flask application in directly here to register this
-            extension with the flask app, or call init_app after creating this object (in a factory pattern).
+        """
+        Creates a JWTManager instance. You can either pass a flask application in directly here to register this
+        extension with the flask app or call init_app after creating this object (in a factory pattern).
 
-            :param app:
-                The Flask Application object
-            :param add_context_processor:
-                Controls if `current_user` should be added to flasks template context (and thus be available for use in
-                Jinja templates). Defaults to ``False``. """
+        :param app: The Flask Application object
+        :param add_context_processor: Controls if `current_user` should be added to Flask's template context (and
+                                      thus be available for use in Jinja templates). Defaults to `False`
+        """
 
         # Register the default error handler callback methods. These can be overridden with the appropriate loader
         # decorators
@@ -63,13 +64,13 @@ class JWTManager(object):
             self.init_app(app, add_context_processor)
 
     def init_app(self, app: Flask, add_context_processor: bool = False) -> None:
-        """ Register this extension with the flask app.
+        """
+        Register this extension with the flask app.
 
-            :param app:
-                The Flask Application object
-            :param add_context_processor:
-                Controls if `current_user` should be added to flasks template context (and thus be available for use in
-                Jinja templates). Defaults to ``False``. """
+        :param app: The Flask Application object
+        :param add_context_processor: Controls if `current_user` should be added to flask's template context (and thus
+                                      be available for use in Jinja templates). Defaults to `False`.
+        """
         # Save this so we can use it later in the extension
         if not hasattr(app, "extensions"):  # pragma: no cover
             app.extensions = {}
