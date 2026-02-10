@@ -14,6 +14,7 @@ from . import tokens_create
 from . import tokens_cookies
 from . import tokens_encode_decode
 from . import jwt_exceptions
+from . import jwt_user
 
 _logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ def logout_user(user_obj, logout_all_sessions=False):
     db = jwt_man.get_db()
 
     if logout_all_sessions:
-        return user_obj.logout_all_user_sessions()
+        return jwt_user.logout_all_user_sessions(user_obj)
 
     if not logout_all_sessions:  # if we logged out all sessions, then all tokens have already been removed
         user_tokens = []
@@ -96,7 +97,7 @@ def logout_all_user_sessions(self):
             print("Canceled. No changes")
             return
 
-    self.remove_user_expired_tokens(expire_all_tokens=True)
+    remove_user_expired_tokens(self, expire_all_tokens=True)
 
 
 def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
@@ -123,7 +124,7 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 
     for token_obj in user_tokens:
         # check if this token has expired
-        if token_obj.expire_at > datetime.utcnow():
+        if expire_all_tokens or token_obj.expire_at > datetime.utcnow():
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
