@@ -34,7 +34,7 @@ def login_user(user_obj: object):
     remove_user_expired_tokens(user_obj)
 
 
-def logout_user(user_obj, logout_all_sessions=False):
+def logout_user(user_obj, logout_all_sessions: bool = False):
     method = f'logout_user({user_obj.id}, logout_all_sessions={logout_all_sessions})'
 
     jwt_man = jwt_manager.get_jwt_manager()
@@ -117,14 +117,14 @@ def remove_user_expired_tokens(user_obj: object, expire_all_tokens=False):
 
     removed_access_count = 0
     removed_refresh_count = 0
-    user_tokens = access_token_class.query.filter(access_token_class.user_id == user_obj.id,
-                                                  access_token_class.expire_at.isnot(None)).all() + \
-                  refresh_token_class.query.filter(refresh_token_class.user_id == user_obj.id,
-                                                   refresh_token_class.expire_at.isnot(None)).all()
+    user_tokens = access_token_class.query.filter(access_token_class.user_id == user_obj.id).all() + \
+                  refresh_token_class.query.filter(refresh_token_class.user_id == user_obj.id).all()
 
+    _logger.info(f'{method}: {len(user_tokens)} tokens for user: {user_obj}')
     for token_obj in user_tokens:
         # check if this token has expired
-        if expire_all_tokens or token_obj.expire_at > datetime.utcnow():
+        # TODO - what to do if `expire_all_tokens' is False and `token_obj.expire_at` is None
+        if expire_all_tokens or (token_obj.expire_at is not None and token_obj.expire_at > datetime.utcnow()):
             if type(token_obj) == access_token_class:
                 removed_access_count = removed_access_count + 1
             else: # refresh token
